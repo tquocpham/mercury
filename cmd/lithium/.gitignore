@@ -1,0 +1,15 @@
+# Ignore all
+*
+# Unignore all with extensions
+!*.*
+# Unignore all dirs
+!*/
+!Dockerfile
+
+config.local.yaml
+
+#ignore crypto key files
+jwtRS256.key*
+
+/data
+coverage.out
