@@ -31,8 +31,6 @@ node_modules
 .DS_Store
 */__pycache__/*
 */.pytest_cache/*
-.env.local
-.env
 
 # local secret keys for testing
 jwtRS256.key*
