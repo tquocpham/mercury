@@ -1,0 +1,8 @@
+go 1.25.5
+
+use (
+	./cmd/gateway
+	./cmd/query
+	./cmd/worker
+	./pkg
+)

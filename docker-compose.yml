@@ -1,0 +1,113 @@
+version: "3.9"
+services:
+  influxdb:
+    image: influxdb:3-core
+    restart: always
+    ports:
+      - "8181:8181"
+    command:
+      - influxdb3
+      - serve
+      - --node-id=node0
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3/data
+    volumes:
+      - "./docker/data/influxdb3:/var/lib/influxdb3/data"
+  telegraf:
+    image: telegraf:latest
+    restart: always
+    user: "root:root"
+    entrypoint: ["/usr/bin/telegraf"]
+    depends_on:
+      - influxdb
+    ports:
+      - "8125:8125/udp"
+    volumes:
+      - "./docker/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_USER: $GRAFANA_USER
+      GF_SECURITY_ADMIN_PASSWORD: $GRAFANA_PASSWORD
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+    volumes:
+      - "./docker/data/grafana:/var/lib/grafana"
+      - "./docker/grafana/provisioning:/etc/grafana/provisioning"
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"   # host access
+      - "29092:29092" # internal docker access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Two listeners:
+      # - 9092 for host machine
+      # - 29092 for docker services
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  cassandra:
+    image: cassandra:4.1
+    restart: always
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: "texting-cluster"
+    volumes:
+      - "./docker/data/cassandra:/var/lib/cassandra"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: cmd/gateway/Dockerfile
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      kafka_broker: kafka:29092
+      query_host: http://query:9002
+      statsd_addr: telegraf:8125
+      environment: production
+    depends_on:
+      - kafka
+      - query
+
+  query:
+    build:
+      context: .
+      dockerfile: cmd/query/Dockerfile
+    restart: always
+    ports:
+      - "9002:9002"
+    environment:
+      web_port: "9002"
+      statsd_addr: telegraf:8125
+      environment: production
+      cassandra_host: cassandra
+    depends_on:
+      - cassandra
+
+  worker:
+    build:
+      context: .
+      dockerfile: cmd/worker/Dockerfile
+    restart: always
+    environment:
+      cassandra_host: cassandra
+    depends_on:
+      - kafka
+      - cassandra
