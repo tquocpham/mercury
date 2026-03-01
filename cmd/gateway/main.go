@@ -59,5 +59,7 @@ func main() {
 		middleware.UseLogger(logger, environment))
 	messageRoutes.GET("/messages", messagesHandler.GetMessages)
 	messageRoutes.GET("/messages/refresh", messagesHandler.RefreshMessages)
-	server.Serve(e, fmt.Sprintf(":%s", port))
+	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
+		logger.Fatal(err)
+	}
 }

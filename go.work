@@ -2,6 +2,7 @@ go 1.25.5
 
 use (
 	./cmd/gateway
+	./cmd/notifier
 	./cmd/query
 	./cmd/worker
 	./pkg

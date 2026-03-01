@@ -3,9 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercury/cmd/worker/lib/managers"
+	"github.com/mercury/pkg/clients/notifier"
 	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/kmq"
 	"github.com/segmentio/kafka-go"
@@ -17,12 +19,18 @@ type KafkaHandlers interface {
 
 type kafkaHandlers struct {
 	cassandraClient managers.CassandraClient
+	notifierClient  notifier.Client
 }
 
-func NewKafkaHandlers(cassandraClient managers.CassandraClient) KafkaHandlers {
+func NewKafkaHandlers(cassandraClient managers.CassandraClient, notifierClient notifier.Client) KafkaHandlers {
 	return &kafkaHandlers{
 		cassandraClient: cassandraClient,
+		notifierClient:  notifierClient,
 	}
+}
+
+type Message struct {
+	Message string `json:"message"`
 }
 
 func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq.Result, error) {
@@ -48,6 +56,16 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 
 	if err := h.cassandraClient.SaveMessage(conversationID, messageID, chatData.User, chatData.Message, msg.Time); err != nil {
 		logger.WithError(err).Error("cassandra: save message failed")
+		return kmq.Retry, err
+	}
+	logger.Debug("sending notification")
+	_, err := h.notifierClient.SendNotification(
+		ctx,
+		fmt.Sprintf("conversation:%s", conversationID),
+		"Message",
+		string(msg.Value),
+	)
+	if err != nil {
 		return kmq.Retry, err
 	}
 	return kmq.Success, nil

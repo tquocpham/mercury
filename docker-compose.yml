@@ -69,7 +69,14 @@ services:
       CASSANDRA_CLUSTER_NAME: "texting-cluster"
     volumes:
       - "./docker/data/cassandra:/var/lib/cassandra"
-
+  redis:
+    image: redis:7.4-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --save 20 1 --loglevel warning --requirepass $REDIS_PASSWORD
+    volumes:
+      - "./docker/data/redis:/data"
   gateway:
     build:
       context: .
@@ -111,3 +118,18 @@ services:
     depends_on:
       - kafka
       - cassandra
+
+  notifier:
+    build:
+      context: .
+      dockerfile: cmd/notifier/Dockerfile
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      statsd_addr: telegraf:8125
+      environment: production
+      redis_addr: redis:6379
+      redis_pw: $REDIS_PASSWORD
+    depends_on:
+      - redis

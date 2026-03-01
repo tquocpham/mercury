@@ -1,12 +1,15 @@
 package main
 
 import (
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/mercury/cmd/worker/lib/handlers"
 	"github.com/mercury/cmd/worker/lib/managers"
+	"github.com/mercury/pkg/clients/notifier"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/kmq"
 	"github.com/mercury/pkg/middleware"
@@ -26,6 +29,7 @@ func main() {
 	environment := cfg.SetDefaultString("environment", "local", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	cassHost := cfg.SetDefaultString("cassandra_host", "localhost", false)
+	notifierAddr := cfg.SetDefaultString("notifier_addr", "http://notifier:8080", true)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -45,10 +49,14 @@ func main() {
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "worker")
 
+	notifierClient := notifier.NewClient(notifierAddr, &http.Client{
+		Timeout: 10 * time.Second,
+	})
+
 	consumer := kmq.NewKafkaConsumer(brokers, groupID, topic, logger)
 	defer consumer.Close()
 
-	kh := handlers.NewKafkaHandlers(cass)
+	kh := handlers.NewKafkaHandlers(cass, notifierClient)
 
 	consumer.Consume(
 		kh.SaveMessage,
@@ -61,5 +69,4 @@ func main() {
 	<-quit
 
 	logger.Info("shutting down")
-
 }

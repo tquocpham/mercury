@@ -1,7 +1,10 @@
+import asyncio
 import argparse
+import json
 from urllib.parse import urlencode
 
 import httpx
+import websockets
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Input, RichLog
@@ -46,11 +49,13 @@ class ChatApp(App):
     TITLE = "Chat Prototype"
     BINDINGS = [("q", "quit", "Quit")]
 
-    def __init__(self, lithium_client: ChatClient, user: str):
+    def __init__(self, client: ChatClient, user: str, ws_addr: str, convo_id: str):
         super().__init__()
         self.__messages = []
-        self.__lithium_client = lithium_client
+        self.__client = client
         self.__user = user
+        self.__ws_addr = ws_addr
+        self.__convo_id = convo_id
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -61,19 +66,38 @@ class ChatApp(App):
 
     async def on_mount(self) -> None:
         self.query_one("#user_input").focus()
-        msg_response = await self.__lithium_client.get_messages()
+        msg_response = await self.__client.get_messages()
         if "Messages" not in msg_response:
             assert False, msg_response
         self.__messages = msg_response["Messages"]
         for m in reversed(self.__messages):
             self.display_message(m["user"], m["body"])
 
-        self.set_interval(1.0, self.poll_server)
+        asyncio.create_task(self._ws_listener())
+        self.set_interval(30.0, self.poll_server)
+
+    async def _ws_listener(self) -> None:
+        url = f"{self.__ws_addr}/api/v1/ws"
+        try:
+            async with websockets.connect(url) as ws:
+                await ws.send(json.dumps({
+                    "channels": [f"conversation:{self.__convo_id}"]
+                }))
+                async for raw in ws:
+                    try:
+                        msg = json.loads(raw)
+                        self.display_message(msg["user"], msg["message"])
+                    except Exception:
+                        pass
+        except Exception as e:
+            self.display_message("System", f"WebSocket disconnected: {e}")
 
     async def poll_server(self) -> None:
+        if not self.__messages:
+            return
         message_id = self.__messages[0]['message_id']
         try:
-            msg_response = await self.__lithium_client.refresh_messages(message_id)
+            msg_response = await self.__client.refresh_messages(message_id)
         except Exception as ex:
             self.display_message('Error', str(ex))
             return
@@ -88,7 +112,7 @@ class ChatApp(App):
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.value.strip():
-            await self.__lithium_client.send_message(self.__user, event.value)
+            await self.__client.send_message(self.__user, event.value)
             self.display_message(f"(sent) {self.__user}", event.value)
             self.query_one("#user_input", Input).value = ""
 
@@ -96,17 +120,17 @@ class ChatApp(App):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", "-u", help="username", required=True)
-    parser.add_argument("--addr", "-a", help="chat_server_addr",
+    parser.add_argument("--addr", "-a", help="chat server HTTP address",
                         default='http://localhost:9001',
                         required=False)
-    parser.add_argument("--convoid", "-c", help="chat_conversation_id",
+    parser.add_argument("--ws-addr", "-w", help="notifier WebSocket address",
+                        default='ws://localhost:8080',
+                        required=False)
+    parser.add_argument("--convoid", "-c", help="chat conversation id",
                         default='abc123123',
                         required=False)
     args = parser.parse_args()
-    user = args.user
-    server_addr = args.addr
-    convid = args.convoid
 
-    lithium_client = ChatClient(server_addr, convid)
-    app = ChatApp(lithium_client, user)
+    client = ChatClient(args.addr, args.convoid)
+    app = ChatApp(client, args.user, args.ws_addr, args.convoid)
     app.run()
