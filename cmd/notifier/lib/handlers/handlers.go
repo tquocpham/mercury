@@ -6,7 +6,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/pkg/clients/notifier"
 	"github.com/mercury/pkg/middleware"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -19,17 +18,16 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type WebSocketHandlers interface {
+type NotifierHandlers interface {
 	NotifyClient(c echo.Context) error
-	SendNotification(c echo.Context) error
 }
 
-type websocketHandlers struct {
+type notifierHandlers struct {
 	redisClient *redis.Client
 }
 
-func NewWebSocketHandlers(redisClient *redis.Client) WebSocketHandlers {
-	return &websocketHandlers{
+func NewNotifierHandlers(redisClient *redis.Client) NotifierHandlers {
+	return &notifierHandlers{
 		redisClient: redisClient,
 	}
 }
@@ -40,7 +38,7 @@ type WebSocketRequest struct {
 	Channels []string `json:"channels"`
 }
 
-func (h *websocketHandlers) NotifyClient(c echo.Context) error {
+func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 	logger := middleware.GetLogger(c)
 	w := c.Response()
 	r := c.Request()
@@ -93,17 +91,4 @@ func (h *websocketHandlers) NotifyClient(c echo.Context) error {
 			return nil
 		}
 	}
-}
-
-func (h *websocketHandlers) SendNotification(c echo.Context) error {
-	request := &notifier.SendNotificationRequest{}
-	if err := json.NewDecoder(c.Request().Body).Decode(request); err != nil {
-		return echo.ErrBadRequest
-	}
-
-	channel := request.Channel
-	notified := h.redisClient.Publish(c.Request().Context(), channel, []byte(request.Payload))
-	return c.JSON(http.StatusOK, &notifier.SendNotificationResponse{
-		Notified: notified.Val(),
-	})
 }

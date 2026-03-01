@@ -29,7 +29,7 @@ func NewCassandraClient(hosts ...string) (CassandraClient, error) {
 	cluster.Keyspace = ""
 	session, err := cluster.CreateSession()
 	if err != nil {
-		return nil, fmt.Errorf("cassandra: connect: %w", err)
+		return nil, fmt.Errorf("cassandra connect (%w)", err)
 	}
 
 	if err := session.Query(`
@@ -37,7 +37,7 @@ func NewCassandraClient(hosts ...string) (CassandraClient, error) {
 		WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}
 	`).Exec(); err != nil {
 		session.Close()
-		return nil, fmt.Errorf("cassandra: create keyspace: %w", err)
+		return nil, fmt.Errorf("cassandra create keyspace (%w)", err)
 	}
 
 	if err := session.Query(`

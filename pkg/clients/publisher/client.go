@@ -1,4 +1,4 @@
-package notifier
+package publisher
 
 import (
 	"bytes"
@@ -17,14 +17,14 @@ type Client interface {
 	) (*SendNotificationResponse, error)
 }
 
-type notifierClient struct {
+type publisherClient struct {
 	host       string
 	httpClient *http.Client
 }
 
 // NewClient creates a new query client
 func NewClient(host string, httpClient *http.Client) Client {
-	return &notifierClient{
+	return &publisherClient{
 		host:       host,
 		httpClient: httpClient,
 	}
@@ -40,7 +40,7 @@ type SendNotificationResponse struct {
 	Notified int64 `json:"notified"`
 }
 
-func (c *notifierClient) SendNotification(
+func (c *publisherClient) SendNotification(
 	ctx context.Context,
 	channel string,
 	Type string,
@@ -69,7 +69,7 @@ func (c *notifierClient) SendNotification(
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("notifier sendnotification: unexpected status %d", response.StatusCode)
+		return nil, fmt.Errorf("publisher sendnotification: unexpected status %d", response.StatusCode)
 	}
 
 	r := &SendNotificationResponse{}

@@ -8,13 +8,13 @@ A real-time chat backend built as a Go microservices monorepo. Messages are prod
 client
   │
   ▼
-gateway          ← HTTP API (port 8080)
+gateway          ← HTTP API
   │   └── publishes to Kafka via worker client
   │   └── reads via query client (HTTP)
   │
   ├── worker     ← Kafka consumer → writes to Cassandra
   │
-  └── query      ← HTTP API (port 9002) → reads from Cassandra
+  └── query      ← HTTP API → reads from Cassandra
 ```
 
 **Infrastructure:** Kafka · Cassandra · InfluxDB · Telegraf · Grafana
@@ -25,7 +25,7 @@ gateway          ← HTTP API (port 8080)
 
 | Service | Description | Default Port |
 |---------|-------------|--------------|
-| `gateway` | Public-facing HTTP API — send and retrieve messages | `8080` |
+| `gateway` | Public-facing HTTP API — send and retrieve messages | `9001` |
 | `query` | Internal read service — fetches messages from Cassandra | `9002` |
 | `worker` | Kafka consumer — persists messages to Cassandra | — |
 

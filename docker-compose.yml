@@ -13,6 +13,14 @@ services:
       - --data-dir=/var/lib/influxdb3/data
     volumes:
       - "./docker/data/influxdb3:/var/lib/influxdb3/data"
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
   telegraf:
     image: telegraf:latest
     restart: always
@@ -83,14 +91,15 @@ services:
       dockerfile: cmd/gateway/Dockerfile
     restart: always
     ports:
-      - "8080:80"
+      - "9001:9001"
     environment:
-      kafka_broker: kafka:29092
-      query_host: http://query:9002
-      statsd_addr: telegraf:8125
-      environment: production
+      WEB_PORT: "9001"
+      KAFKA_BROKER: kafka:29092
+      QUERY_HOST: http://query:9002
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
     depends_on:
-      - kafka
+      # - kafka
       - query
 
   query:
@@ -101,12 +110,12 @@ services:
     ports:
       - "9002:9002"
     environment:
-      web_port: "9002"
-      statsd_addr: telegraf:8125
-      environment: production
-      cassandra_host: cassandra
-    depends_on:
-      - cassandra
+      WEB_PORT: "9002"
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      CASSANDRA_HOST: cassandra
+    # depends_on:
+    #   - cassandra
 
   worker:
     build:
@@ -114,10 +123,12 @@ services:
       dockerfile: cmd/worker/Dockerfile
     restart: always
     environment:
-      cassandra_host: cassandra
-    depends_on:
-      - kafka
-      - cassandra
+      CASSANDRA_HOST: cassandra
+      KAFKA_BROKER: kafka:29092
+      NOTIFIER_ADDR: http://publisher:9003
+    # depends_on:
+    #   - kafka
+    #   - cassandra
 
   notifier:
     build:
@@ -125,11 +136,30 @@ services:
       dockerfile: cmd/notifier/Dockerfile
     restart: always
     ports:
-      - "8081:80"
+      - "9004:9004"
     environment:
-      statsd_addr: telegraf:8125
-      environment: production
-      redis_addr: redis:6379
-      redis_pw: $REDIS_PASSWORD
+      WEB_PORT: "9004"
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      REDIS_ADDR: redis:6379
+      REDIS_PW: $REDIS_PASSWORD
+    depends_on:
+      - redis
+
+  publisher:
+    build:
+      context: .
+      dockerfile: cmd/publisher/Dockerfile
+    restart: always
+    ports:
+      - "9003"
+    environment:
+      WEB_PORT: "9003"
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      REDIS_ADDR: redis:6379
+      REDIS_PW: $REDIS_PASSWORD
     depends_on:
       - redis

@@ -99,7 +99,9 @@ func (c *kmqConsumer) Consume(handler Handler, middlewares ...Middleware) {
 			res, err := h(msgCtx, msg)
 			if err != nil {
 				cancel()
-				c.logger.WithError(err).Error("handler execution failed")
+				c.logger.
+					WithError(err).
+					Error("handler execution failed")
 				// Do NOT commit — let it retry after restart/rebalance.
 				continue
 			}

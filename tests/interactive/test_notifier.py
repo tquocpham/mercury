@@ -6,7 +6,7 @@ import json
 import websockets
 
 
-WS_URL = "ws://localhost:8080/api/v1/ws"
+WS_URL = "ws://localhost:9004/api/v1/ws"
 
 
 async def test_sub(ws, channel: str) -> bool:

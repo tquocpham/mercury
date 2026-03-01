@@ -22,7 +22,7 @@ func main() {
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
 	environment := cfg.SetDefaultString("environment", "local", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	cassHost := cfg.SetDefaultString("cassandra_host", "localhost", false)
+	cassHost := cfg.SetDefaultString("cassandra_host", "cassandra", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})

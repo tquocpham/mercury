@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/cmd/notifier/lib/handlers"
+	"github.com/mercury/cmd/publisher/lib/handlers"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
@@ -23,6 +23,7 @@ func main() {
 	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
 	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
 	environment := cfg.SetDefaultString("environment", "local", false)
+	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -32,20 +33,19 @@ func main() {
 	}
 	logger.SetLevel(level)
 
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "websocket")
+
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
 		Password: redisPassword,
 	})
 
-	handler := handlers.NewNotifierHandlers(redisClient)
+	handler := handlers.NewPublisherHandlers(redisClient)
 	e := echo.New()
-	// TODO: intergrate this with statsd. The statsd middleware currently times connection latency
-	// assuming brief http connections Websockets are long lived so we need to measure it differently.
-	// statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	// statsdClient := middleware.NewStatsdClient(statsdAddr, "websocket")
 	v1 := e.Group("api/v1",
-		middleware.UseLogger(logger, environment))
-	v1.GET("/ws", handler.NotifyClient)
+		middleware.UseLogger(logger, environment),
+		middleware.UseStatsd(statsdClient))
+	v1.POST("/send", handler.SendNotification)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

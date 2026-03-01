@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mercury/cmd/worker/lib/managers"
-	"github.com/mercury/pkg/clients/notifier"
+	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/kmq"
 	"github.com/segmentio/kafka-go"
@@ -19,10 +19,10 @@ type KafkaHandlers interface {
 
 type kafkaHandlers struct {
 	cassandraClient managers.CassandraClient
-	notifierClient  notifier.Client
+	notifierClient  publisher.Client
 }
 
-func NewKafkaHandlers(cassandraClient managers.CassandraClient, notifierClient notifier.Client) KafkaHandlers {
+func NewKafkaHandlers(cassandraClient managers.CassandraClient, notifierClient publisher.Client) KafkaHandlers {
 	return &kafkaHandlers{
 		cassandraClient: cassandraClient,
 		notifierClient:  notifierClient,

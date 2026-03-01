@@ -124,7 +124,7 @@ if __name__ == "__main__":
                         default='http://localhost:9001',
                         required=False)
     parser.add_argument("--ws-addr", "-w", help="notifier WebSocket address",
-                        default='ws://localhost:8080',
+                        default='ws://localhost:9004',
                         required=False)
     parser.add_argument("--convoid", "-c", help="chat conversation id",
                         default='abc123123',

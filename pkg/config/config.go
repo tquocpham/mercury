@@ -54,8 +54,8 @@ func NewConfig(configType string) Config {
 	return cfg
 }
 
-func (c *config) AllSettings() map[string]interface{} {
-	settings := map[string]interface{}{}
+func (c *config) AllSettings() map[string]any {
+	settings := map[string]any{}
 	for k, v := range c.Viper.AllSettings() {
 		if _, ok := c.secureKeys[k]; ok {
 			settings[k] = "****"
