@@ -53,8 +53,7 @@ func main() {
 	}
 	logger.SetLevel(level)
 
-	// TODO CREATE A USERS DATABASE
-	userManager, err := managers.NewUsersManager(mongoAddr)
+	accountsManager, err := managers.NewAccountsManager(mongoAddr)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -70,10 +69,12 @@ func main() {
 	hcRoutes := e.Group("api/v1")
 	hcRoutes.GET("/ping", hch.Ping)
 
-	authHandlers := handlers.NewAuthHandler(userManager, time.Hour, k.Private, k.Public)
+	authHandlers := handlers.NewAuthHandler(accountsManager, time.Hour, k.Private, k.Public)
 	v1 := e.Group("api/v1")
 	v1.POST("/auth", authHandlers.Signin)
 	v1.GET("/auth/refresh", authHandlers.Refresh)
+	v1.POST("/account", authHandlers.CreateAccount)
+	v1.POST("/account/activate/:accountid", authHandlers.ActivateAccount)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

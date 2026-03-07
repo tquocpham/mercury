@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -13,31 +14,34 @@ import (
 	"github.com/mercury/pkg/clients/auth"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/middleware"
+	"github.com/sirupsen/logrus"
 )
 
 type AuthHandlers interface {
 	Signin(c echo.Context) error
 	Refresh(c echo.Context) error
+	CreateAccount(c echo.Context) error
+	ActivateAccount(c echo.Context) error
 }
 
 type authHandlers struct {
-	userManager managers.UsersManager
-	tokenExp    time.Duration
-	privKey     *rsa.PrivateKey
-	pubKey      *rsa.PublicKey
-	signer      jwt.SigningMethod
+	accountsManager managers.AccountsManager
+	tokenExp        time.Duration
+	privKey         *rsa.PrivateKey
+	pubKey          *rsa.PublicKey
+	signer          jwt.SigningMethod
 }
 
 func NewAuthHandler(
-	userManager managers.UsersManager, tokenExp time.Duration,
+	accountsManager managers.AccountsManager, tokenExp time.Duration,
 	privKey *rsa.PrivateKey, pubKey *rsa.PublicKey) AuthHandlers {
 
 	return &authHandlers{
-		userManager: userManager,
-		tokenExp:    tokenExp,
-		privKey:     privKey,
-		pubKey:      pubKey,
-		signer:      jwt.GetSigningMethod("RS256"),
+		accountsManager: accountsManager,
+		tokenExp:        tokenExp,
+		privKey:         privKey,
+		pubKey:          pubKey,
+		signer:          jwt.GetSigningMethod("RS256"),
 	}
 }
 
@@ -50,19 +54,19 @@ func (h *authHandlers) Signin(c echo.Context) error {
 	}
 	creds := request.Credentials
 
-	// get user and check if the passwords match
-	user, err := h.userManager.GetUserByUsername(ctx, creds.Username)
+	// get account info and check if the passwords match
+	account, err := h.accountsManager.GetAccountByUsername(ctx, creds.Username)
 	if err != nil {
 		return echo.ErrUnauthorized
 	}
-	if !hash.CheckPasswordHash(creds.Password, user.Salt, user.Password) {
+	if !hash.CheckPasswordHash(creds.Password, account.Salt, account.Password) {
 		return echo.ErrUnauthorized
 	}
 
 	expirationTime := time.Now().Add(h.tokenExp)
 
-	rs := make([]string, len(user.Roles))
-	for i, r := range user.Roles {
+	rs := make([]string, len(account.Roles))
+	for i, r := range account.Roles {
 		rs[i] = string(r)
 	}
 
@@ -111,4 +115,44 @@ func (h *authHandlers) Refresh(c echo.Context) error {
 	return c.JSON(http.StatusOK, auth.TokenResponse{
 		Token: signedToken,
 	})
+}
+
+func (h *authHandlers) CreateAccount(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	request := &auth.AccountCreationRequest{}
+	if err := json.NewDecoder(c.Request().Body).Decode(request); err != nil {
+		return echo.ErrUnauthorized
+	}
+
+	account, err := h.accountsManager.CreateAccount(ctx, request.Username, request.Email, request.Password, []auth.Role{
+		auth.UserRole,
+	})
+	if err != nil {
+		if errors.Is(err, managers.ErrDuplicateAccount) {
+			return echo.NewHTTPError(http.StatusConflict, "username or email already taken")
+		}
+		return echo.ErrInternalServerError
+	}
+
+	logger := instrumentation.LoggerFromContext(ctx)
+	logger.
+		WithFields(logrus.Fields{
+			"accountID": account.ID,
+		}).
+		Info("account created")
+
+	return c.JSON(http.StatusOK, auth.AccountCreationResponse{
+		AccountID: account.ID,
+	})
+}
+
+func (h *authHandlers) ActivateAccount(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	accountID := c.Param("accountid")
+	if err := h.accountsManager.ActivateAccount(ctx, accountID); err != nil {
+		// todo: update this with correct error
+		return echo.ErrUnauthorized
+	}
+
+	return c.JSON(http.StatusOK, auth.TokenResponse{})
 }

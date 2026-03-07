@@ -27,6 +27,15 @@ type SigninRequest struct {
 	Credentials Credentials `json:"credentials"`
 }
 
+type AccountCreationRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+type AccountCreationResponse struct {
+	AccountID string `json:"account_id"`
+}
+
 // Create a struct to read the username and password from the request body
 type Credentials struct {
 	Password string `json:"password"`

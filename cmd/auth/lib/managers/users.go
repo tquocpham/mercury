@@ -15,18 +15,20 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-type UsersManager interface {
-	// GetUser looks up a user by username or email.
-	GetUserByUsername(ctx context.Context, email string) (_ *UserInformation, err error)
-	AddUser(username, email, password string, roles []auth.Role) error
+var ErrDuplicateAccount = errors.New("username or email already taken")
+
+type AccountsManager interface {
+	GetAccountByUsername(ctx context.Context, username string) (_ *AccountInformation, err error)
+	CreateAccount(ctx context.Context, username, email, password string, roles []auth.Role) (_ *AccountInformation, err error)
+	ActivateAccount(ctx context.Context, accountID string) (err error)
 }
 
-type usersManager struct {
+type accountsManager struct {
 	col *mongo.Collection
 }
 
-// UserInformation is the in-memory representation returned to callers.
-type UserInformation struct {
+// AccountInformation is the in-memory representation returned to callers.
+type AccountInformation struct {
 	ID       string
 	Username string
 	Email    string
@@ -35,17 +37,19 @@ type UserInformation struct {
 	Roles    []auth.Role
 }
 
-// userDocument is the MongoDB storage representation.
-type userDocument struct {
+// accountDocument is the MongoDB storage representation.
+type accountDocument struct {
 	ID       string      `bson:"_id"`
 	Username string      `bson:"username"`
 	Email    string      `bson:"email"`
 	Password []byte      `bson:"password"`
 	Salt     []byte      `bson:"salt"`
 	Roles    []auth.Role `bson:"roles"`
+	State    string      `bson:"state"`
+	Expiry   time.Time   `bson:"expiry"`
 }
 
-func NewUsersManager(mongoAddr string) (UsersManager, error) {
+func NewAccountsManager(mongoAddr string) (AccountsManager, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -72,29 +76,32 @@ func NewUsersManager(mongoAddr string) (UsersManager, error) {
 		return nil, err
 	}
 
-	return &usersManager{col: col}, nil
+	return &accountsManager{col: col}, nil
 }
 
-// GetUser finds a user by username or email.
-func (u *usersManager) GetUserByUsername(ctx context.Context, username string) (_ *UserInformation, err error) {
+// GetUser finds a account by username.
+func (u *accountsManager) GetAccountByUsername(ctx context.Context, username string) (_ *AccountInformation, err error) {
 	t := instrumentation.NewMetricsTimer(ctx, "usrmgr.dur", statsd.StringTag("op", "get_user_by_un"))
 	defer func() { t.Done(err) }()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{"$or": bson.A{
-		bson.M{"username": username},
-	}}
+	filter := bson.M{
+		"username": username,
+		"state": bson.M{
+			"$ne": "pending",
+		},
+	}
 
-	var doc userDocument
+	var doc accountDocument
 	if err := u.col.FindOne(ctx, filter).Decode(&doc); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, errors.New("user not found")
+			return nil, errors.New("account not found")
 		}
 		return nil, err
 	}
 
-	return &UserInformation{
+	return &AccountInformation{
 		ID:       doc.ID,
 		Username: doc.Username,
 		Email:    doc.Email,
@@ -104,28 +111,78 @@ func (u *usersManager) GetUserByUsername(ctx context.Context, username string) (
 	}, nil
 }
 
-// AddUser creates a new user with a hashed password and a generated UUID.
-func (u *usersManager) AddUser(username, email, password string, roles []auth.Role) error {
-	salt, err := hash.GenerateSalt(14)
-	if err != nil {
-		return err
-	}
+// AddUser creates a new account with a hashed password and a generated UUID.
+func (u *accountsManager) CreateAccount(
+	ctx context.Context, username, email, password string, roles []auth.Role) (_ *AccountInformation, err error) {
 
-	pwhash, err := hash.Hash(password, salt)
-	if err != nil {
-		return err
-	}
+	t := instrumentation.NewMetricsTimer(ctx, "usrmgr.dur", statsd.StringTag("op", "activate_user"))
+	defer func() { t.Done(err) }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	_, err = u.col.InsertOne(ctx, userDocument{
-		ID:       uuid.New().String(),
+	salt, err := hash.GenerateSalt(14)
+	if err != nil {
+		return nil, err
+	}
+
+	pwhash, err := hash.Hash(string(password), salt)
+	if err != nil {
+		return nil, err
+	}
+
+	accountID := uuid.New().String()
+
+	_, err = u.col.InsertOne(ctx, accountDocument{
+		ID:       accountID,
 		Username: username,
 		Email:    email,
 		Password: pwhash,
 		Salt:     salt,
 		Roles:    roles,
+		State:    "pending",
+		Expiry:   time.Now().Add(1 * time.Hour),
 	})
-	return err
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, ErrDuplicateAccount
+		}
+		return nil, err
+	}
+
+	return &AccountInformation{
+		ID:       accountID,
+		Username: username,
+		Email:    email,
+		Password: pwhash,
+		Salt:     salt,
+		Roles:    roles,
+	}, nil
+}
+
+// ActivateAccount activates a newly created account
+func (u *accountsManager) ActivateAccount(ctx context.Context, accountID string) (err error) {
+	t := instrumentation.NewMetricsTimer(ctx, "usrmgr.dur", statsd.StringTag("op", "activate_user"))
+	defer func() { t.Done(err) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	filter := bson.M{
+		"_id":    accountID,
+		"state":  bson.M{"$eq": "pending"},
+		"expiry": bson.M{"$gt": time.Now()},
+	}
+
+	u.col.FindOneAndUpdate(ctx,
+		filter,
+		bson.M{
+			"$set": bson.M{
+				"state": "active",
+			},
+		},
+		options.FindOneAndUpdate(),
+	)
+
+	return nil
 }
