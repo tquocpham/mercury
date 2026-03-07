@@ -74,6 +74,8 @@ func main() {
 	messagesHandler := handlers.NewMessageHandlers(workerClient, queryClient, redisClient)
 	hch := handlers.NewHealthCheckHandlers()
 
+	// TODO: implement ratelimiter
+	// https://pkg.go.dev/github.com/webx-top/echo/middleware/ratelimiter#RateLimiterWithConfig
 	e := echo.New()
 	hc := e.Group("api/v1/hc",
 		middleware.UseLogger(logger, environment),

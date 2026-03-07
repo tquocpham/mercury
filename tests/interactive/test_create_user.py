@@ -48,12 +48,12 @@ def create_account(client: httpx.Client, auth_addr: str, username: str, email: s
     return account_id
 
 
-# def activate_account(client: httpx.Client, auth_addr: str, account_id: str) -> None:
-#     resp = client.post(f"{auth_addr}/api/v1/account/activate/{account_id}")
-#     if resp.status_code != 200:
-#         raise RuntimeError(
-#             f"activate_account failed ({resp.status_code}): {resp.text}")
-#     print(f"  activated: {account_id}")
+def activate_account(client: httpx.Client, auth_addr: str, account_id: str) -> None:
+    resp = client.post(f"{auth_addr}/api/v1/account/activate/{account_id}")
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"activate_account failed ({resp.status_code}): {resp.text}")
+    print(f"  activated: {account_id}")
 
 
 def main() -> None:
@@ -69,7 +69,7 @@ def main() -> None:
             try:
                 account_id = create_account(
                     client, args.auth, u["username"], u["email"], generate_random_string(8))
-                # activate_account(client, args.auth, account_id)
+                activate_account(client, args.auth, account_id)
             except RuntimeError as e:
                 print(f"  skipped: {e}")
 
