@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// Define a new type for the enumeration
+// Role defines user role type for the enumeration
 type Role string
 
 // Define the possible values as constants of the custom type

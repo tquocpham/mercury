@@ -47,7 +47,7 @@ func main() {
 		AccessKey: cfg.SetDefaultString("aws_access_key", "test", true),
 		SecretKey: cfg.SetDefaultString("aws_secret_key", "test", true),
 		Region:    cfg.SetDefaultString("aws_region", "us-west-1", true),
-		Endpoint:  cfg.SetDefaultString("ssm_endpoint", "", false),
+		Endpoint:  cfg.SetDefaultString("aws_endpoint", "", false),
 	})
 	k := config.NewKeys()
 	if err := k.LoadPublicFromSSM(ssmClient, pubKeySSMParam); err != nil {

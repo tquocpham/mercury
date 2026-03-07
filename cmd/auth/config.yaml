@@ -1,1 +1,2 @@
 web_port: 7001
+log_level: debug

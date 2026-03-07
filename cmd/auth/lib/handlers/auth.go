@@ -12,6 +12,7 @@ import (
 	"github.com/mercury/cmd/auth/lib/hash"
 	"github.com/mercury/cmd/auth/lib/managers"
 	"github.com/mercury/pkg/clients/auth"
+	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/middleware"
 	"github.com/sirupsen/logrus"
@@ -34,13 +35,13 @@ type authHandlers struct {
 
 func NewAuthHandler(
 	accountsManager managers.AccountsManager, tokenExp time.Duration,
-	privKey *rsa.PrivateKey, pubKey *rsa.PublicKey) AuthHandlers {
+	keys *config.Keys) AuthHandlers {
 
 	return &authHandlers{
 		accountsManager: accountsManager,
 		tokenExp:        tokenExp,
-		privKey:         privKey,
-		pubKey:          pubKey,
+		privKey:         keys.Private,
+		pubKey:          keys.Public,
 		signer:          jwt.GetSigningMethod("RS256"),
 	}
 }

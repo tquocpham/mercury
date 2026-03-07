@@ -69,11 +69,13 @@ func main() {
 	hcRoutes := e.Group("api/v1")
 	hcRoutes.GET("/ping", hch.Ping)
 
-	authHandlers := handlers.NewAuthHandler(accountsManager, time.Hour, k.Private, k.Public)
+	authHandlers := handlers.NewAuthHandler(accountsManager, time.Hour, k)
 	v1 := e.Group("api/v1")
 	v1.POST("/auth", authHandlers.Signin)
 	v1.GET("/auth/refresh", authHandlers.Refresh)
 	v1.POST("/account", authHandlers.CreateAccount)
+	// TODO: This link will get emailed out to the user when the email
+	// service is setup. For now it can just be chained from /account
 	v1.POST("/account/activate/:accountid", authHandlers.ActivateAccount)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
