@@ -37,3 +37,7 @@ jwtRS256.key*
 
 # kubernetes manifests (may contain secrets)
 /k8s/
+/infra/
+
+.vscode
+*.pem

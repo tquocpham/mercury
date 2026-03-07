@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/mercury/pkg/kmq"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,6 +31,9 @@ func main() {
 	environment := cfg.SetDefaultString("environment", "local", true)
 	queryHost := cfg.SetDefaultString("query_host", "http://query:9002", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", true)
+	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
+	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
+	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -37,6 +42,17 @@ func main() {
 		logrus.Fatal(err)
 	}
 	logger.SetLevel(level)
+
+	ssmClient := config.NewSSMClient(context.Background(), config.AWSConfig{
+		AccessKey: cfg.SetDefaultString("aws_access_key", "test", true),
+		SecretKey: cfg.SetDefaultString("aws_secret_key", "test", true),
+		Region:    cfg.SetDefaultString("aws_region", "us-west-1", true),
+		Endpoint:  cfg.SetDefaultString("ssm_endpoint", "", false),
+	})
+	k := config.NewKeys()
+	if err := k.LoadPublicFromSSM(ssmClient, pubKeySSMParam); err != nil {
+		panic(err)
+	}
 
 	brokers := []string{broker}
 	producer := kmq.NewProducer(brokers)
@@ -48,17 +64,29 @@ func main() {
 		Timeout: 10 * time.Second,
 	})
 
-	messagesHandler := handlers.NewMessageHandlers(workerClient, queryClient)
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gateway")
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: redisPassword,
+	})
+
+	messagesHandler := handlers.NewMessageHandlers(workerClient, queryClient, redisClient)
+	hch := handlers.NewHealthCheckHandlers()
+
 	e := echo.New()
-	messageRoutes := e.Group("api/v1",
+	hc := e.Group("api/v1/hc",
 		middleware.UseLogger(logger, environment),
 		middleware.UseStatsd(statsdClient))
-	messageRoutes.POST("/messages", messagesHandler.SendMessage,
-		middleware.UseLogger(logger, environment))
-	messageRoutes.GET("/messages", messagesHandler.GetMessages)
-	messageRoutes.GET("/messages/refresh", messagesHandler.RefreshMessages)
+	hc.GET("/ping", hch.Ping)
+	hc.GET("/auth", hch.Ping,
+		middleware.UseAuth(k.Public, middleware.EnforceRoles("admin")))
+	v1 := e.Group("api/v1",
+		middleware.UseLogger(logger, environment),
+		middleware.UseStatsd(statsdClient))
+	v1.POST("/messages", messagesHandler.SendMessage)
+	v1.GET("/messages", messagesHandler.GetMessages)
+	v1.GET("/messages/refresh", messagesHandler.RefreshMessages)
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)
 	}

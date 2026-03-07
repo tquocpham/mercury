@@ -3,12 +3,15 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/mercury/cmd/gateway/lib/limiter"
 	"github.com/mercury/pkg/clients/query"
 	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/middleware"
+	"github.com/redis/go-redis/v9"
 )
 
 type MessageHandlers interface {
@@ -20,12 +23,18 @@ type MessageHandlers interface {
 type messageHandlers struct {
 	workerClient worker.WorkerClient
 	queryClient  query.Client
+	redisClient  *redis.Client
 }
 
-func NewMessageHandlers(workerClient worker.WorkerClient, queryClient query.Client) MessageHandlers {
+func NewMessageHandlers(
+	workerClient worker.WorkerClient,
+	queryClient query.Client,
+	redisClient *redis.Client,
+) MessageHandlers {
 	return &messageHandlers{
 		workerClient: workerClient,
 		queryClient:  queryClient,
+		redisClient:  redisClient,
 	}
 }
 
@@ -48,7 +57,23 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 			"error": "conversation_id, user and body required",
 		})
 	}
-	msgID, err := h.workerClient.SendChatMessage(c.Request().Context(), req.ConversationID, req.User, req.Body)
+	ctx := c.Request().Context()
+
+	if !limiter.Limit(
+		h.redisClient,
+		ctx,
+		200,
+		time.Hour,
+		req.User,
+		req.ConversationID,
+	) {
+		return c.JSON(http.StatusTooManyRequests, map[string]string{
+			"error": "too many requests",
+		})
+	}
+
+	msgID, err := h.workerClient.SendChatMessage(
+		ctx, req.ConversationID, req.User, req.Body)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to enqueue message",

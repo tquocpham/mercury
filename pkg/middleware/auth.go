@@ -2,7 +2,10 @@ package middleware
 
 import (
 	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,12 +16,12 @@ import (
 )
 
 const ContextKeyClaims = "Claims"
-const CookieName = "session"
+const SessionCookieName = "session"
 
 // Claims is a struct that will be encoded to a JWT.
 type Claims struct {
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	Username string   `json:"username"`
+	Roles    []string `json:"roles"`
 	jwt.StandardClaims
 }
 
@@ -28,7 +31,7 @@ func UseAuth(pubKey *rsa.PublicKey, requirements ...Requirement) echo.Middleware
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			cookie, err := c.Cookie(CookieName)
+			cookie, err := c.Cookie(SessionCookieName)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 			}
@@ -84,8 +87,10 @@ func EnforceTimes(claims *Claims) error {
 func EnforceRoles(roles ...string) Requirement {
 	return func(claims *Claims) error {
 		for _, role := range roles {
-			if role == claims.Role {
-				return nil
+			for _, claimRole := range claims.Roles {
+				if role == string(claimRole) {
+					return nil
+				}
 			}
 		}
 		return errors.New("invalid role")
@@ -115,7 +120,7 @@ func UseAuthRedirect(pubKey *rsa.PublicKey, loginURL string) echo.MiddlewareFunc
 			}
 			fullURL := scheme + "://" + c.Request().Host + c.Request().URL.String()
 
-			cookie, err := c.Cookie(CookieName)
+			cookie, err := c.Cookie(SessionCookieName)
 			if err != nil || cookie.Value == "" {
 				redirect := loginURL + "?redirect=" + url.QueryEscape(fullURL)
 				return c.Redirect(http.StatusFound, redirect)
@@ -147,20 +152,8 @@ func AuthCallbackHandler(pubKey *rsa.PublicKey) echo.HandlerFunc {
 		}
 
 		c.SetCookie(&http.Cookie{
-			Name:    CookieName,
+			Name:    SessionCookieName,
 			Value:   tokenStr,
-			Path:    "/",
-			Expires: time.Unix(claims.ExpiresAt, 0),
-		})
-		c.SetCookie(&http.Cookie{
-			Name:    "username",
-			Value:   claims.Username,
-			Path:    "/",
-			Expires: time.Unix(claims.ExpiresAt, 0),
-		})
-		c.SetCookie(&http.Cookie{
-			Name:    "userrole",
-			Value:   claims.Role,
 			Path:    "/",
 			Expires: time.Unix(claims.ExpiresAt, 0),
 		})
@@ -174,10 +167,11 @@ func ValidateToken(tokenString string, pubKey *rsa.PublicKey) (*Claims, error) {
 	if tokenString == "" {
 		return nil, errors.New("invalid token")
 	}
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
 		return pubKey, nil
 	})
 	if err != nil {
+		fmt.Println(err.Error())
 		return nil, err
 	}
 	if !token.Valid {
@@ -188,4 +182,33 @@ func ValidateToken(tokenString string, pubKey *rsa.PublicKey) (*Claims, error) {
 		return nil, errors.New("invalid token")
 	}
 	return claims, nil
+}
+
+// extractClaims returns claims from context (set by UseAuth) if present,
+// or decodes the session cookie JWT without signature verification.
+// Signature verification is intentionally skipped — this is for identification only.
+// Auth middleware handles actual verification.
+func extractClaims(c echo.Context) *Claims {
+	// if UseAuth func was called before this just get claims from context
+	if claims := GetClaims(c); claims != nil {
+		return claims
+	}
+
+	cookie, err := c.Cookie(SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return nil
+	}
+	parts := strings.SplitN(cookie.Value, ".", 3)
+	if len(parts) != 3 {
+		return nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil
+	}
+	var claims Claims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil
+	}
+	return &claims
 }

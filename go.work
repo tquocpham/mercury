@@ -1,6 +1,7 @@
 go 1.25.5
 
 use (
+	./cmd/auth
 	./cmd/gateway
 	./cmd/notifier
 	./cmd/publisher
