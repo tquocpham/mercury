@@ -11,9 +11,25 @@ from textual.widgets import Footer, Header, Input, RichLog
 
 
 class ChatClient:
-    def __init__(self, server_addr, convo_id):
+    def __init__(self, server_addr, auth_addr, convo_id):
         self.__server_addr = server_addr
+        self.__auth_addr = auth_addr
         self.__convo_id = convo_id
+        self.__token = None
+
+    async def login(self, username, password):
+        url = f"{self.__auth_addr}/api/v1/auth"
+        print(url)
+        response = await httpx.AsyncClient().post(url, json={
+            "credentials": {
+                "password": password,
+                "username": username,
+            }
+        })
+        self.__token = response.json()['token']
+
+    def __cookies(self):
+        return {"session": self.__token} if self.__token else {}
 
     async def get_messages(self, page_size=10, next_token=None):
         params = {
@@ -24,7 +40,7 @@ class ChatClient:
             params["next_token"] = next_token
         query_string = urlencode(params)
         url = f"{self.__server_addr}/api/v1/messages?{query_string}"
-        response = await httpx.AsyncClient().get(url)
+        response = await httpx.AsyncClient().get(url, cookies=self.__cookies())
         return response.json()
 
     async def refresh_messages(self, message_id):
@@ -34,15 +50,14 @@ class ChatClient:
         }
         query_string = urlencode(params)
         url = f"{self.__server_addr}/api/v1/messages/refresh?{query_string}"
-        response = await httpx.AsyncClient().get(url)
+        response = await httpx.AsyncClient().get(url, cookies=self.__cookies())
         return response.json()
 
-    async def send_message(self, username, message):
+    async def send_message(self, message):
         await httpx.AsyncClient().post(f'{self.__server_addr}/api/v1/messages', json={
             "conversation_id": self.__convo_id,
             "body": message,
-            "user": username,
-        })
+        }, cookies=self.__cookies())
 
 
 class ChatApp(App):
@@ -66,6 +81,7 @@ class ChatApp(App):
 
     async def on_mount(self) -> None:
         self.query_one("#user_input").focus()
+        await client.login(args.user, args.password)
         msg_response = await self.__client.get_messages()
         if "Messages" not in msg_response:
             assert False, msg_response
@@ -112,7 +128,7 @@ class ChatApp(App):
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.value.strip():
-            await self.__client.send_message(self.__user, event.value)
+            await self.__client.send_message(event.value)
             self.display_message(f"(sent) {self.__user}", event.value)
             self.query_one("#user_input", Input).value = ""
 
@@ -120,17 +136,21 @@ class ChatApp(App):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", "-u", help="username", required=True)
+    parser.add_argument("--password", "-p", help="password", required=True)
     parser.add_argument("--addr", "-a", help="chat server HTTP address",
                         default='http://localhost:9001',
                         required=False)
     parser.add_argument("--ws-addr", "-w", help="notifier WebSocket address",
                         default='ws://localhost:9004',
                         required=False)
+    parser.add_argument("--auth-addr", "-r", help="auth address",
+                        default='http://localhost:9005',
+                        required=False)
     parser.add_argument("--convoid", "-c", help="chat conversation id",
                         default='abc123123',
                         required=False)
     args = parser.parse_args()
 
-    client = ChatClient(args.addr, args.convoid)
+    client = ChatClient(args.addr, args.auth_addr, args.convoid)
     app = ChatApp(client, args.user, args.ws_addr, args.convoid)
     app.run()

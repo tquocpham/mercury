@@ -86,9 +86,12 @@ func main() {
 	v1 := e.Group("api/v1",
 		middleware.UseLogger(logger, environment),
 		middleware.UseStatsd(statsdClient))
-	v1.POST("/messages", messagesHandler.SendMessage)
-	v1.GET("/messages", messagesHandler.GetMessages)
-	v1.GET("/messages/refresh", messagesHandler.RefreshMessages)
+	v1.POST("/messages", messagesHandler.SendMessage,
+		middleware.UseAuth(k.Public))
+	v1.GET("/messages", messagesHandler.GetMessages,
+		middleware.UseAuth(k.Public))
+	v1.GET("/messages/refresh", messagesHandler.RefreshMessages,
+		middleware.UseAuth(k.Public))
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)
 	}

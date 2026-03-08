@@ -67,7 +67,16 @@ services:
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-
+  mongo:
+    image: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    volumes:
+      - "./docker/data/mongodb:/data/db"
+    ports:
+      - "27017:27017"
   cassandra:
     image: cassandra:4.1
     restart: always
@@ -85,6 +94,25 @@ services:
     command: redis-server --save 20 1 --loglevel warning --requirepass $REDIS_PASSWORD
     volumes:
       - "./docker/data/redis:/data"
+  auth:
+    build:
+      context: .
+      dockerfile: cmd/auth/Dockerfile
+    restart: always
+    ports:
+      - "9005:9005"
+    environment:
+      WEB_PORT: "9005"
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AWS_ACCESS_KEY: $AWS_ACCESS_KEY
+      AWS_SECRET_KEY: $AWS_SECRET_KEY
+      AWS_REGION: $AWS_REGION
+      AWS_ENDPOINT: $AWS_ENDPOINT
+    depends_on:
+      - mongo
+
   gateway:
     build:
       context: .
@@ -98,6 +126,10 @@ services:
       QUERY_HOST: http://query:9002
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
+      AWS_ACCESS_KEY: $AWS_ACCESS_KEY
+      AWS_SECRET_KEY: $AWS_SECRET_KEY
+      AWS_REGION: $AWS_REGION
+      AWS_ENDPOINT: $AWS_ENDPOINT
     depends_on:
       # - kafka
       - query
@@ -146,7 +178,6 @@ services:
       REDIS_PW: $REDIS_PASSWORD
     depends_on:
       - redis
-
   publisher:
     build:
       context: .

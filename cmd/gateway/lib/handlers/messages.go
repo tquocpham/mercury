@@ -41,7 +41,6 @@ func NewMessageHandlers(
 type MessageRequest struct {
 	ConversationID string `json:"conversation_id"`
 	Body           string `json:"body"`
-	User           string `json:"user"`
 }
 
 func (h *messageHandlers) SendMessage(c echo.Context) error {
@@ -51,12 +50,18 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 			"error": "invalid request",
 		})
 	}
-
-	if req.ConversationID == "" || req.Body == "" || req.User == "" {
+	if req.ConversationID == "" || req.Body == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "conversation_id, user and body required",
 		})
 	}
+
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "cannot get user information"})
+	}
+	user := claims.Username
+
 	ctx := c.Request().Context()
 
 	if !limiter.Limit(
@@ -64,7 +69,7 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 		ctx,
 		200,
 		time.Hour,
-		req.User,
+		user,
 		req.ConversationID,
 	) {
 		return c.JSON(http.StatusTooManyRequests, map[string]string{
@@ -73,7 +78,7 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 	}
 
 	msgID, err := h.workerClient.SendChatMessage(
-		ctx, req.ConversationID, req.User, req.Body)
+		ctx, req.ConversationID, user, req.Body)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to enqueue message",

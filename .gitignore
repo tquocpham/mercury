@@ -32,6 +32,9 @@ node_modules
 */__pycache__/*
 */.pytest_cache/*
 
+.env
+.env.local
+
 # local secret keys for testing
 jwtRS256.key*
 

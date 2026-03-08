@@ -34,7 +34,7 @@ func main() {
 		AccessKey: cfg.SetDefaultString("aws_access_key", "test", true),
 		SecretKey: cfg.SetDefaultString("aws_secret_key", "test", true),
 		Region:    cfg.SetDefaultString("aws_region", "us-west-1", true),
-		Endpoint:  cfg.SetDefaultString("ssm_endpoint", "", true),
+		Endpoint:  cfg.SetDefaultString("aws_endpoint", "", true),
 	})
 
 	k := config.NewKeys()
