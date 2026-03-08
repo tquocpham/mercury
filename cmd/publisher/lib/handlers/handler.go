@@ -36,7 +36,12 @@ func (h *publisherHandlers) SendNotification(c echo.Context) error {
 	}
 
 	channel := request.Channel
-	notified := h.redisClient.Publish(c.Request().Context(), channel, []byte(request.Payload))
+	notification, err := json.Marshal(request.Notification)
+	if err != nil {
+		return echo.ErrInternalServerError
+
+	}
+	notified := h.redisClient.Publish(c.Request().Context(), channel, notification)
 	return c.JSON(http.StatusOK, &publisher.SendNotificationResponse{
 		Notified: notified.Val(),
 	})

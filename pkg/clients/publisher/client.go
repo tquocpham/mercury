@@ -13,7 +13,7 @@ type Client interface {
 		ctx context.Context,
 		channel string,
 		Type string,
-		payload string,
+		payload map[string]any,
 	) (*SendNotificationResponse, error)
 }
 
@@ -31,26 +31,32 @@ func NewClient(host string, httpClient *http.Client) Client {
 }
 
 type SendNotificationRequest struct {
-	Channel string `json:"channel"`
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
+	Channel      string       `json:"channel"`
+	Notification Notification `json:"notification"`
 }
 
 type SendNotificationResponse struct {
 	Notified int64 `json:"notified"`
 }
 
+type Notification struct {
+	Type    string         `json:"type"`
+	Payload map[string]any `json:"payload"`
+}
+
 func (c *publisherClient) SendNotification(
 	ctx context.Context,
 	channel string,
 	Type string,
-	payload string,
+	payload map[string]any,
 ) (*SendNotificationResponse, error) {
 
 	bts, err := json.Marshal(&SendNotificationRequest{
-		Type:    Type,
 		Channel: channel,
-		Payload: payload,
+		Notification: Notification{
+			Type:    Type,
+			Payload: payload,
+		},
 	})
 	if err != nil {
 		return nil, err

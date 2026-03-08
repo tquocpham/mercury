@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/middleware"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -79,6 +80,11 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 
 	go func() {
 		for msg := range pubsub.Channel() {
+			notification := &publisher.Notification{}
+			if err := json.Unmarshal([]byte(msg.Payload), notification); err != nil {
+				logger.Error("failed to parse message")
+				continue
+			}
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
 				return
 			}

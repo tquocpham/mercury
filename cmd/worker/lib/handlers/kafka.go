@@ -58,12 +58,19 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 		logger.WithError(err).Error("cassandra: save message failed")
 		return kmq.Retry, err
 	}
+
+	payload := map[string]any{}
+	if err := json.Unmarshal(msg.Value, &payload); err != nil {
+		logger.WithError(err).Error("failed to parse message payload")
+		return kmq.Retry, err
+	}
+
 	logger.Debug("sending notification")
 	_, err := h.notifierClient.SendNotification(
 		ctx,
 		fmt.Sprintf("conversation:%s", conversationID),
 		"Message",
-		string(msg.Value),
+		payload,
 	)
 	if err != nil {
 		return kmq.Retry, err

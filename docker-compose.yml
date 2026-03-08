@@ -3,8 +3,8 @@ services:
   influxdb:
     image: influxdb:3-core
     restart: always
-    ports:
-      - "8181:8181"
+    # ports:
+    #   - "8181:8181"
     command:
       - influxdb3
       - serve
@@ -28,8 +28,8 @@ services:
     entrypoint: ["/usr/bin/telegraf"]
     depends_on:
       - influxdb
-    ports:
-      - "8125:8125/udp"
+    # ports:
+    #   - "8125:8125/udp"
     volumes:
       - "./docker/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro"
       - "/var/run/docker.sock:/var/run/docker.sock"
@@ -41,8 +41,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: $GRAFANA_PASSWORD
     depends_on:
       - influxdb
-    ports:
-      - "3000:3000"
+    # ports:
+    #   - "3000:3000"
     volumes:
       - "./docker/data/grafana:/var/lib/grafana"
       - "./docker/grafana/provisioning:/etc/grafana/provisioning"
@@ -75,8 +75,8 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: root
     volumes:
       - "./docker/data/mongodb:/data/db"
-    ports:
-      - "27017:27017"
+    # ports:
+    #   - "27017:27017"
   cassandra:
     image: cassandra:4.1
     restart: always
@@ -89,8 +89,8 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: always
-    ports:
-      - "6379:6379"
+    # ports:
+    #   - "6379:6379"
     command: redis-server --save 20 1 --loglevel warning --requirepass $REDIS_PASSWORD
     volumes:
       - "./docker/data/redis:/data"

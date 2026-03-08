@@ -26,6 +26,7 @@ class ChatClient:
                 "username": username,
             }
         })
+        response.raise_for_status()
         self.__token = response.json()['token']
 
     def __cookies(self):
@@ -61,7 +62,7 @@ class ChatClient:
 
 
 class ChatApp(App):
-    TITLE = "Chat Prototype"
+    TITLE = "Chat"
     BINDINGS = [("q", "quit", "Quit")]
 
     def __init__(self, client: ChatClient, user: str, ws_addr: str, convo_id: str):
@@ -101,10 +102,19 @@ class ChatApp(App):
                 }))
                 async for raw in ws:
                     try:
-                        msg = json.loads(raw)
-                        self.display_message(msg["user"], msg["message"])
-                    except Exception:
-                        pass
+                        notification = json.loads(raw)
+                        # raise Exception(msg)
+                        if notification['type'] != "Message":
+                            continue
+                        payload = notification['payload']
+                        mid = payload["message_id"].split('-')[0]
+                        self.__messages.insert(0, payload)
+                        self.display_message(
+                            f'{mid} {payload["user"]}', payload["message"])
+                        # self.display_message(msg["user"], msg["message"])
+                    except Exception as ex:
+                        self.display_message(
+                            "System", f"Websocket parse: {ex} {raw}")
         except Exception as e:
             self.display_message("System", f"WebSocket disconnected: {e}")
 
@@ -117,9 +127,11 @@ class ChatApp(App):
         except Exception as ex:
             self.display_message('Error', str(ex))
             return
-        self.__messages = msg_response["Messages"] + self.__messages
-        for m in msg_response["Messages"]:
-            self.display_message(m["user"], m["body"])
+        messages = msg_response["Messages"]
+        self.__messages = messages + self.__messages
+        for m in messages:
+            mid = m["message_id"].split('-')[0]
+            self.display_message(f'{mid} {m["user"]}', m["body"])
 
     def display_message(self, user: str, message: str) -> None:
         chat_box = self.query_one("#chat_box", RichLog)
