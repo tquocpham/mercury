@@ -1,4 +1,4 @@
-module github.com/mercury/cmd/notifier
+module github.com/mercury/cmd/subscriber
 
 go 1.25.5
 

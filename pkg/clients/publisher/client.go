@@ -22,7 +22,7 @@ type publisherClient struct {
 	httpClient *http.Client
 }
 
-// NewClient creates a new query client
+// NewClient creates a new publisher client
 func NewClient(host string, httpClient *http.Client) Client {
 	return &publisherClient{
 		host:       host,

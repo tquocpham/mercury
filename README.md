@@ -11,7 +11,7 @@ client
   │
   ├── POST /api/v1/auth ────────────► auth       ← JWT auth (MongoDB)
   │
-  ├── GET  /api/v1/ws ──────────────► notifier   ← WebSocket push (Redis pub/sub)
+  ├── GET  /api/v1/ws ──────────────► subscriber ← WebSocket push (Redis pub/sub)
   │                                       ▲
   │                                       │ POST /api/v1/send
   │                                   publisher   ← Internal publish endpoint
@@ -36,7 +36,7 @@ gateway          ← HTTP API          worker      ← Kafka consumer
 | `gateway` | Public HTTP API — send and retrieve messages | `9001` | public |
 | `query` | Internal read service — fetches messages from Cassandra | `9002` | internal |
 | `worker` | Kafka consumer — persists messages, triggers notifications | — | internal |
-| `notifier` | Public WebSocket server — streams events to clients via Redis pub/sub | `9004` | public |
+| `subscriber` | Public WebSocket server — streams events to clients | `9004` | public |
 | `publisher` | Internal HTTP endpoint — publishes events to Redis pub/sub | `9003` | internal |
 
 ### API (auth)
@@ -56,7 +56,7 @@ GET  /api/v1/messages?conversation_id=&page_size=&next_token=            Paginat
 GET  /api/v1/messages/refresh?conversation_id=&message_id=               Poll for new messages
 ```
 
-### WebSocket (notifier)
+### WebSocket (subscriber)
 
 ```
 GET /api/v1/ws
@@ -68,7 +68,7 @@ Client connects, then sends a subscribe message as the first frame:
 { "token": "eyJ...", "channels": ["chat:convo-abc", "player:user-123"] }
 ```
 
-The server then streams JSON notification envelopes as events arrive. See [cmd/notifier/README.md](cmd/notifier/README.md) for the full channel model, message envelope format, and authorization design.
+The server then streams JSON notification envelopes as events arrive. See [cmd/subscriber/README.md](cmd/subscriber/README.md) for the full channel model, message envelope format, and authorization design.
 
 ### Publish (publisher — internal only)
 
@@ -76,7 +76,7 @@ The server then streams JSON notification envelopes as events arrive. See [cmd/n
 POST /api/v1/send
 ```
 
-Used by internal services (e.g. worker) to push events to Redis pub/sub, which fans out to all connected notifier instances:
+Used by internal services (e.g. worker) to push events to Redis pub/sub, which fans out to all connected subscriber instances:
 
 ```json
 { "channel": "chat:convo-abc", "payload": "{\"user\":\"alice\",\"message\":\"hi\"}" }
@@ -89,7 +89,7 @@ mercury/
 ├── cmd/
 │   ├── auth/        # Authentication service (JWT, MongoDB)
 │   ├── gateway/     # Public HTTP API service
-│   ├── notifier/    # Public WebSocket notification service
+│   ├── subscriber/    # Public WebSocket notification service
 │   │   └── README.md  # Notification system design doc
 │   ├── publisher/   # Internal event publish service
 │   ├── query/       # Internal read/query service
@@ -139,12 +139,12 @@ make tidy     # go mod tidy across all modules
 ### Build Docker images
 
 ```bash
-docker build -f cmd/auth/Dockerfile     -t mercury-auth .
-docker build -f cmd/gateway/Dockerfile  -t mercury-gateway .
-docker build -f cmd/query/Dockerfile    -t mercury-query .
-docker build -f cmd/worker/Dockerfile   -t mercury-worker .
-docker build -f cmd/notifier/Dockerfile -t mercury-notifier .
-docker build -f cmd/publisher/Dockerfile -t mercury-publisher .
+docker build -f cmd/auth/Dockerfile       -t mercury-auth .
+docker build -f cmd/gateway/Dockerfile    -t mercury-gateway .
+docker build -f cmd/query/Dockerfile      -t mercury-query .
+docker build -f cmd/worker/Dockerfile     -t mercury-worker .
+docker build -f cmd/subscriber/Dockerfile -t mercury-subscriber .
+docker build -f cmd/publisher/Dockerfile  -t mercury-publisher .
 ```
 
 ## Configuration
@@ -163,10 +163,10 @@ All services read configuration from environment variables (uppercase). Viper's 
 | `KAFKA_TOPIC` | gateway, worker | `messages` | Kafka topic |
 | `KAFKA_GROUP_ID` | worker | `messages-consumer-group` | Kafka consumer group |
 | `QUERY_HOST` | gateway | `http://query:9002` | Query service base URL |
-| `NOTIFIER_ADDR` | worker | `http://publisher:9003` | Publisher service base URL |
+| `PUBLISHER_ADDR` | worker | `http://publisher:9003` | Publisher service base URL |
 | `CASSANDRA_HOST` | query, worker | `localhost` | Cassandra host |
-| `REDIS_ADDR` | notifier, publisher | `redis:6379` | Redis address |
-| `REDIS_PW` | notifier, publisher | _(empty)_ | Redis password |
+| `REDIS_ADDR` | subscriber, publisher | `redis:6379` | Redis address |
+| `REDIS_PW` | subscriber, publisher | _(empty)_ | Redis password |
 | `LOG_LEVEL` | all | `info` | Log level |
 | `ENVIRONMENT` | all | `local` | Environment label (added to logs) |
 | `STATSD_ADDR` | all | `telegraf:8125` | StatsD UDP address |
@@ -187,4 +187,4 @@ python chatclient.py \
   --convoid my-chat
 ```
 
-Messages are sent via the gateway HTTP API and received in real time via the notifier WebSocket. A 30-second HTTP poll is used as a fallback.
+Messages are sent via the gateway HTTP API and received in real time via the subscriber WebSocket. A 30-second HTTP poll is used as a fallback.

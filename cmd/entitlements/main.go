@@ -73,7 +73,7 @@ func main() {
 	// hcRoutes.GET("/ping", hch.Ping)
 	v1 := e.Group("api/v1",
 		// only admins can modify entitlements.
-		// This api is only supposed to be used by other services.
+		// This api is only supposed to be used by admin and other services.
 		middleware.UseAuth(k.Public, middleware.EnforceRoles("admin")))
 	v1.GET("/check", h.Check)
 	v1.GET("/grant", h.Grant)

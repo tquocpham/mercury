@@ -157,15 +157,15 @@ services:
     environment:
       CASSANDRA_HOST: cassandra
       KAFKA_BROKER: kafka:29092
-      NOTIFIER_ADDR: http://publisher:9003
+      PUBLISHER_ADDR: http://publisher:9003
     # depends_on:
     #   - kafka
     #   - cassandra
 
-  notifier:
+  subscriber:
     build:
       context: .
-      dockerfile: cmd/notifier/Dockerfile
+      dockerfile: cmd/subscriber/Dockerfile
     restart: always
     ports:
       - "9004:9004"

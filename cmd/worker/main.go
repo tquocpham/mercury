@@ -29,7 +29,7 @@ func main() {
 	environment := cfg.SetDefaultString("environment", "local", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	cassHost := cfg.SetDefaultString("cassandra_host", "cassandras", false)
-	notifierAddr := cfg.SetDefaultString("notifier_addr", "http://publisher:9003", true)
+	publisherAddr := cfg.SetDefaultString("publisher_addr", "http://publisher:9003", true)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -49,14 +49,14 @@ func main() {
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "worker")
 
-	notifierClient := publisher.NewClient(notifierAddr, &http.Client{
+	publisherClient := publisher.NewClient(publisherAddr, &http.Client{
 		Timeout: 10 * time.Second,
 	})
 
 	consumer := kmq.NewKafkaConsumer(brokers, groupID, topic, logger)
 	defer consumer.Close()
 
-	kh := handlers.NewKafkaHandlers(cass, notifierClient)
+	kh := handlers.NewKafkaHandlers(cass, publisherClient)
 
 	consumer.Consume(
 		kh.SaveMessage,

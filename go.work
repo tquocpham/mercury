@@ -4,7 +4,7 @@ use (
 	./cmd/auth
 	./cmd/entitlements
 	./cmd/gateway
-	./cmd/notifier
+	./cmd/subscriber
 	./cmd/publisher
 	./cmd/query
 	./cmd/worker

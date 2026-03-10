@@ -103,7 +103,6 @@ class ChatApp(App):
                 async for raw in ws:
                     try:
                         notification = json.loads(raw)
-                        # raise Exception(msg)
                         if notification['type'] != "Message":
                             continue
                         payload = notification['payload']
@@ -152,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--addr", "-a", help="chat server HTTP address",
                         default='http://localhost:9001',
                         required=False)
-    parser.add_argument("--ws-addr", "-w", help="notifier WebSocket address",
+    parser.add_argument("--ws-addr", "-w", help="subscriber WebSocket address",
                         default='ws://localhost:9004',
                         required=False)
     parser.add_argument("--auth-addr", "-r", help="auth address",

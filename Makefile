@@ -1,4 +1,4 @@
-SERVICES := gateway notifier publisher query worker
+SERVICES := gateway subscriber publisher query worker
 BIN_DIR  := bin
 MODULES  := pkg $(addprefix cmd/,$(SERVICES))
 

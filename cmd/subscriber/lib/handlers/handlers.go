@@ -9,7 +9,6 @@ import (
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/middleware"
 	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
 )
 
 // Upgrader is used to upgrade HTTP connections to WebSocket connections.
@@ -46,26 +45,20 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"err": err.Error(),
-		}).Error("Error upgrading connection")
+		logger.WithError(err).Error("Error upgrading connection")
 		return echo.ErrInternalServerError
 	}
 	defer conn.Close()
 
 	_, raw, err := conn.ReadMessage()
 	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"err": err.Error(),
-		}).Error("Error reading websocket message")
+		logger.WithError(err).Error("Error reading websocket message")
 		return nil
 	}
 
 	var request WebSocketRequest
 	if err := json.Unmarshal(raw, &request); err != nil {
-		logger.WithFields(logrus.Fields{
-			"err": err.Error(),
-		}).Error("Error parsing WebSocketRequest")
+		logger.WithError(err).Error("Error parsing WebSocketRequest")
 		conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Error parsing WebSocketRequest"}`))
 		return nil
 	}

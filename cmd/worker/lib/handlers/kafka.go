@@ -19,13 +19,13 @@ type KafkaHandlers interface {
 
 type kafkaHandlers struct {
 	cassandraClient managers.CassandraClient
-	notifierClient  publisher.Client
+	publisherClient publisher.Client
 }
 
-func NewKafkaHandlers(cassandraClient managers.CassandraClient, notifierClient publisher.Client) KafkaHandlers {
+func NewKafkaHandlers(cassandraClient managers.CassandraClient, publisherClient publisher.Client) KafkaHandlers {
 	return &kafkaHandlers{
 		cassandraClient: cassandraClient,
-		notifierClient:  notifierClient,
+		publisherClient: publisherClient,
 	}
 }
 
@@ -66,7 +66,7 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 	}
 
 	logger.Debug("sending notification")
-	_, err := h.notifierClient.SendNotification(
+	_, err := h.publisherClient.SendNotification(
 		ctx,
 		fmt.Sprintf("conversation:%s", conversationID),
 		"Message",
