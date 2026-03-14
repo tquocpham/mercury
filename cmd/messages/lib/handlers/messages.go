@@ -9,8 +9,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/messages/lib/managers"
+	"github.com/mercury/pkg/clients/messages"
 	"github.com/mercury/pkg/clients/publisher"
-	"github.com/mercury/pkg/clients/query"
 	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
@@ -76,15 +76,15 @@ func (h *messageHandlers) GetMessages(c echo.Context) error {
 		pagingState = parsed
 	}
 
-	messages, err := h.cassandraClient.GetMessages(conversationID, pageSize, pagingState)
+	msgHistory, err := h.cassandraClient.GetMessages(conversationID, pageSize, pagingState)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to fetch messages",
 		})
 	}
-	msgs := make([]query.MessageResponse, len(messages.Messages))
-	for i, msg := range messages.Messages {
-		msgs[i] = query.MessageResponse{
+	msgs := make([]messages.MessageResponse, len(msgHistory.Messages))
+	for i, msg := range msgHistory.Messages {
+		msgs[i] = messages.MessageResponse{
 			ConversationID: msg.ConversationID,
 			MessageID:      msg.MessageID,
 			Body:           msg.Body,
@@ -94,11 +94,11 @@ func (h *messageHandlers) GetMessages(c echo.Context) error {
 	}
 
 	respNextToken := ""
-	if len(messages.Next) > 0 {
-		respNextToken = base64.StdEncoding.EncodeToString(messages.Next)
+	if len(msgHistory.Next) > 0 {
+		respNextToken = base64.StdEncoding.EncodeToString(msgHistory.Next)
 	}
 
-	return c.JSON(http.StatusOK, &query.GetMessagesResponse{
+	return c.JSON(http.StatusOK, &messages.GetMessagesResponse{
 		Messages:  msgs,
 		NextToken: respNextToken,
 	})
@@ -108,7 +108,7 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 	logger := middleware.GetLogger(c)
 	ctx := c.Request().Context()
 
-	var req query.SendMessageRequest
+	var req messages.SendMessageRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid request",
@@ -161,7 +161,7 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 			"error": "failed to enqueue message",
 		})
 	}
-	return c.JSON(http.StatusOK, query.SendMessageResponse{
+	return c.JSON(http.StatusOK, messages.SendMessageResponse{
 		Status:    "queued",
 		MessageID: msgID,
 	})
@@ -176,16 +176,16 @@ func (h *messageHandlers) RefreshMessages(c echo.Context) error {
 	}
 	messageID := c.QueryParam("message_id")
 
-	messages, err := h.cassandraClient.RefreshMessages(conversationID, messageID)
+	msgHistory, err := h.cassandraClient.RefreshMessages(conversationID, messageID)
 	if err != nil {
 		// logger.WithError(err).Error("cassandra: get messages failed")
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to fetch messages",
 		})
 	}
-	msgs := make([]query.MessageResponse, len(messages.Messages))
-	for i, msg := range messages.Messages {
-		msgs[i] = query.MessageResponse{
+	msgs := make([]messages.MessageResponse, len(msgHistory.Messages))
+	for i, msg := range msgHistory.Messages {
+		msgs[i] = messages.MessageResponse{
 			ConversationID: msg.ConversationID,
 			MessageID:      msg.MessageID,
 			Body:           msg.Body,
@@ -195,11 +195,11 @@ func (h *messageHandlers) RefreshMessages(c echo.Context) error {
 	}
 
 	respNextToken := ""
-	if len(messages.Next) > 0 {
-		respNextToken = base64.StdEncoding.EncodeToString(messages.Next)
+	if len(msgHistory.Next) > 0 {
+		respNextToken = base64.StdEncoding.EncodeToString(msgHistory.Next)
 	}
 
-	return c.JSON(http.StatusOK, &query.GetMessagesResponse{
+	return c.JSON(http.StatusOK, &messages.GetMessagesResponse{
 		Messages:  msgs,
 		NextToken: respNextToken,
 	})

@@ -2,11 +2,8 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 
-	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/rmq"
-	"github.com/smira/go-statsd"
 )
 
 // Role defines user role type for the enumeration
@@ -52,25 +49,7 @@ func (c *rmqClient) Close() {
 	c.Publisher.Close()
 }
 
-func request[Req any, Resp any](ctx context.Context, p *rmq.Publisher, route string, req Req) (_ *Resp, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("r", route))
-	defer func() { t.Done(err) }()
-	b, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	response, err := p.Request(route, b)
-	if err != nil {
-		return nil, err
-	}
-	var resp Resp
-	if err := json.Unmarshal(response, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
-// PingResponse is the response for a ping request
+// PingResponse is the response for a ping rmq.Request
 type PingResponse struct {
 	Ping string `json:"ping"`
 }
@@ -89,7 +68,7 @@ type TokenResponse struct {
 }
 
 func (c *rmqClient) Login(ctx context.Context, username, password string) (_ *TokenResponse, err error) {
-	return request[LoginRequest, TokenResponse](ctx, c.Publisher, "auth.v1.login", LoginRequest{
+	return rmq.Request[LoginRequest, TokenResponse](ctx, c.Publisher, "auth.v1.login", LoginRequest{
 		Credentials: Credentials{
 			Username: username,
 			Password: password,
@@ -106,7 +85,7 @@ type RefreshResponse struct {
 }
 
 func (c *rmqClient) Refresh(ctx context.Context, token string) (_ *RefreshResponse, err error) {
-	return request[RefreshRequest, RefreshResponse](ctx, c.Publisher, "auth.v1.refresh", RefreshRequest{
+	return rmq.Request[RefreshRequest, RefreshResponse](ctx, c.Publisher, "auth.v1.refresh", RefreshRequest{
 		Token: token,
 	})
 }
@@ -127,7 +106,7 @@ type AccountCreationResponse struct {
 
 func (c *rmqClient) CreateAccount(ctx context.Context,
 	username string, email string, password string) (_ *AccountCreationResponse, err error) {
-	return request[AccountCreationRequest, AccountCreationResponse](ctx, c.Publisher, "auth.v1.createaccount", AccountCreationRequest{
+	return rmq.Request[AccountCreationRequest, AccountCreationResponse](ctx, c.Publisher, "auth.v1.createaccount", AccountCreationRequest{
 		Username: username,
 		Email:    email,
 		Password: password,
@@ -143,7 +122,7 @@ type ActivateAccountResponse struct {
 }
 
 func (c *rmqClient) ActivateAccount(ctx context.Context, accountID string) (_ *ActivateAccountResponse, err error) {
-	return request[ActivateAccountRequest, ActivateAccountResponse](ctx, c.Publisher, "auth.v1.activateaccount", ActivateAccountRequest{
+	return rmq.Request[ActivateAccountRequest, ActivateAccountResponse](ctx, c.Publisher, "auth.v1.activateaccount", ActivateAccountRequest{
 		AccountID: accountID,
 	})
 }
@@ -160,7 +139,7 @@ type GetSessionRequest struct {
 }
 
 func (c *rmqClient) GetSession(ctx context.Context, sessionID string) (_ *SessionResponse, err error) {
-	return request[GetSessionRequest, SessionResponse](ctx, c.Publisher, "auth.v1.getsession", GetSessionRequest{
+	return rmq.Request[GetSessionRequest, SessionResponse](ctx, c.Publisher, "auth.v1.getsession", GetSessionRequest{
 		SessionID: sessionID,
 	})
 }
@@ -170,7 +149,7 @@ type RefreshSessionRequest struct {
 }
 
 func (c *rmqClient) RefreshSession(ctx context.Context, sessionID string) (_ *SessionResponse, err error) {
-	return request[RefreshSessionRequest, SessionResponse](ctx, c.Publisher, "auth.v1.refreshsession", RefreshSessionRequest{
+	return rmq.Request[RefreshSessionRequest, SessionResponse](ctx, c.Publisher, "auth.v1.refreshsession", RefreshSessionRequest{
 		SessionID: sessionID,
 	})
 }
@@ -184,7 +163,7 @@ type DeleteSessionResponse struct {
 }
 
 func (c *rmqClient) DeleteSession(ctx context.Context, sessionID string) (_ *DeleteSessionResponse, err error) {
-	return request[DeleteSessionRequest, DeleteSessionResponse](ctx, c.Publisher, "auth.v1.deletesession", DeleteSessionRequest{
+	return rmq.Request[DeleteSessionRequest, DeleteSessionResponse](ctx, c.Publisher, "auth.v1.deletesession", DeleteSessionRequest{
 		SessionID: sessionID,
 	})
 }

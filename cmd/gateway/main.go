@@ -3,17 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gateway/lib/handlers"
 	"github.com/mercury/pkg/clients/auth"
-	"github.com/mercury/pkg/clients/query"
+	"github.com/mercury/pkg/clients/messages"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
-	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,10 +23,7 @@ func main() {
 	port := cfg.SetDefaultString("web_port", "80", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
 	environment := cfg.SetDefaultString("environment", "local", true)
-	queryHost := cfg.SetDefaultString("query_host", "http://query:9002", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", true)
-	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
-	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
 	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
 	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 
@@ -52,9 +46,11 @@ func main() {
 		panic(err)
 	}
 
-	queryClient := query.NewClient(queryHost, &http.Client{
-		Timeout: 10 * time.Second,
-	})
+	msgsClient, err := messages.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer msgsClient.Close()
 	authClient, err := auth.NewRMQClient(amqpURL)
 	if err != nil {
 		logrus.Fatal(err)
@@ -63,12 +59,7 @@ func main() {
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gateway")
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: redisPassword,
-	})
-
-	messagesHandler := handlers.NewMessageHandlers(queryClient, redisClient)
+	messagesHandler := handlers.NewMessageHandlers(msgsClient)
 	authHandlers := handlers.NewAuthHandlers(authClient)
 	hch := handlers.NewHealthCheckHandlers()
 

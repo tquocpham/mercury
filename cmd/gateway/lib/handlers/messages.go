@@ -5,10 +5,9 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/pkg/clients/query"
+	"github.com/mercury/pkg/clients/messages"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/middleware"
-	"github.com/redis/go-redis/v9"
 )
 
 type MessageHandlers interface {
@@ -18,15 +17,14 @@ type MessageHandlers interface {
 }
 
 type messageHandlers struct {
-	queryClient query.Client
+	messagesClient messages.RMQClient
 }
 
 func NewMessageHandlers(
-	queryClient query.Client,
-	redisClient *redis.Client,
+	messagesClient messages.RMQClient,
 ) MessageHandlers {
 	return &messageHandlers{
-		queryClient: queryClient,
+		messagesClient: messagesClient,
 	}
 }
 
@@ -55,13 +53,13 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "cannot get user information"})
 	}
 
-	response, err := h.queryClient.SendMessage(ctx, query.SendMessageRequest{
-		ConversationID: req.ConversationID,
-		Body:           req.Body,
-		User:           claims.Username,
-		UserID:         claims.UserID,
-		To:             req.To,
-	})
+	response, err := h.messagesClient.SendMessage(ctx,
+		req.ConversationID,
+		req.Body,
+		claims.Username,
+		claims.UserID,
+		req.To,
+	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to send messages",
@@ -97,10 +95,7 @@ func (h *messageHandlers) GetMessages(c echo.Context) error {
 
 	nextToken := c.QueryParam("next_token")
 	ctx := instrumentation.ToContext(c)
-	messages, err := h.queryClient.GetMessages(ctx, conversationID, query.GetMessagesProps{
-		PageSize:  pageSize,
-		NextToken: nextToken,
-	})
+	messages, err := h.messagesClient.GetMessages(ctx, conversationID, pageSize, nextToken)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to fetch messages",
@@ -124,7 +119,7 @@ func (h *messageHandlers) RefreshMessages(c echo.Context) error {
 		})
 	}
 	ctx := instrumentation.ToContext(c)
-	response, err := h.queryClient.RefreshMessages(ctx, conversationID, messageID)
+	response, err := h.messagesClient.RefreshMessages(ctx, conversationID, messageID)
 	if err != nil {
 		logger.WithError(err).Error("cassandra: get messages failed")
 		return c.JSON(http.StatusInternalServerError, map[string]string{

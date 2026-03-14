@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/messages/lib/handlers"
 	"github.com/mercury/cmd/messages/lib/managers"
 	"github.com/mercury/pkg/clients/publisher"
@@ -13,7 +11,7 @@ import (
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/kmq"
 	"github.com/mercury/pkg/middleware"
-	"github.com/mercury/pkg/server"
+	"github.com/mercury/pkg/rmq"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
@@ -24,9 +22,8 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	port := cfg.SetDefaultString("web_port", "80", false)
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
-	environment := cfg.SetDefaultString("environment", "local", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	cassHost := cfg.SetDefaultString("cassandra_host", "cassandra", false)
 	publisherHost := cfg.SetDefaultString("publisher_addr", "http://publisher:9003", true)
@@ -64,17 +61,24 @@ func main() {
 		Addr:     redisAddr,
 		Password: redisPassword,
 	})
+	rmqHandlers := handlers.NewRMQHandlers(cassClient, publisherClient, workerClient, redisClient)
 
-	messagesHandler := handlers.NewMessageHandlers(cassClient, publisherClient, workerClient, redisClient)
-
-	e := echo.New()
-	messageRoutes := e.Group("api/v1",
-		middleware.UseLogger(logger, environment),
-		middleware.UseStatsd(statsdClient))
-	messageRoutes.POST("/messages", messagesHandler.SendMessage)
-	messageRoutes.GET("/messages", messagesHandler.GetMessages)
-	messageRoutes.GET("/messages/refresh", messagesHandler.RefreshMessages)
-	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
-		logger.Fatal(err)
+	consumer, err := rmq.NewConsumer(amqpURL, logger)
+	if err != nil {
+		logrus.Fatal(err)
 	}
+	defer consumer.Close()
+	consumer.Consume("msgs.v1.getmessages", rmqHandlers.GetMessages,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("msgs.v1.refreshmessages", rmqHandlers.RefreshMessages,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("msgs.v1.sendmessage", rmqHandlers.SendMessage,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Wait()
 }
