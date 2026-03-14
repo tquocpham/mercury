@@ -9,9 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gateway/lib/handlers"
 	"github.com/mercury/pkg/clients/query"
-	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/config"
-	"github.com/mercury/pkg/kmq"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
 	"github.com/redis/go-redis/v9"
@@ -26,8 +24,6 @@ func main() {
 	}
 	port := cfg.SetDefaultString("web_port", "80", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
-	topic := cfg.SetDefaultString("kafka_topic", "messages", true)
-	broker := cfg.SetDefaultString("kafka_broker", "kafka:9092", true)
 	environment := cfg.SetDefaultString("environment", "local", true)
 	queryHost := cfg.SetDefaultString("query_host", "http://query:9002", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", true)
@@ -54,12 +50,6 @@ func main() {
 		panic(err)
 	}
 
-	brokers := []string{broker}
-	producer := kmq.NewProducer(brokers)
-	defer producer.Close()
-
-	workerClient := worker.NewClient(topic, producer)
-
 	queryClient := query.NewClient(queryHost, &http.Client{
 		Timeout: 10 * time.Second,
 	})
@@ -71,7 +61,7 @@ func main() {
 		Password: redisPassword,
 	})
 
-	messagesHandler := handlers.NewMessageHandlers(workerClient, queryClient, redisClient)
+	messagesHandler := handlers.NewMessageHandlers(queryClient, redisClient)
 	hch := handlers.NewHealthCheckHandlers()
 
 	// TODO: implement ratelimiter

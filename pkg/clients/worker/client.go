@@ -12,9 +12,10 @@ import (
 
 // ChatData is the struct that is sent through the kafka queue
 type ChatMessage struct {
-	MessageID string `json:"message_id"`
-	User      string `json:"user"`
-	Message   string `json:"message"`
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
+	User           string `json:"user"`
+	Message        string `json:"message"`
 }
 
 type WorkerClient interface {
@@ -34,11 +35,13 @@ func NewClient(topic string, producer *kmq.Producer) WorkerClient {
 }
 
 func (c *workerClient) SendChatMessage(ctx context.Context, conversationID, user, message string) (string, error) {
+
 	msgID := uuid.New().String()
 	var chatData = &ChatMessage{
-		User:      user,
-		Message:   message,
-		MessageID: msgID,
+		User:           user,
+		Message:        message,
+		MessageID:      msgID,
+		ConversationID: conversationID,
 	}
 	chatDataBytes, err := json.Marshal(chatData)
 	if err != nil {

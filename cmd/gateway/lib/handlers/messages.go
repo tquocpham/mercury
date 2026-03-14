@@ -3,12 +3,9 @@ package handlers
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/cmd/gateway/lib/limiter"
 	"github.com/mercury/pkg/clients/query"
-	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/middleware"
 	"github.com/redis/go-redis/v9"
@@ -21,29 +18,26 @@ type MessageHandlers interface {
 }
 
 type messageHandlers struct {
-	workerClient worker.WorkerClient
-	queryClient  query.Client
-	redisClient  *redis.Client
+	queryClient query.Client
 }
 
 func NewMessageHandlers(
-	workerClient worker.WorkerClient,
 	queryClient query.Client,
 	redisClient *redis.Client,
 ) MessageHandlers {
 	return &messageHandlers{
-		workerClient: workerClient,
-		queryClient:  queryClient,
-		redisClient:  redisClient,
+		queryClient: queryClient,
 	}
 }
 
 type MessageRequest struct {
-	ConversationID string `json:"conversation_id"`
-	Body           string `json:"body"`
+	ConversationID string   `json:"conversation_id"`
+	Body           string   `json:"body"`
+	To             []string `json:"to"`
 }
 
 func (h *messageHandlers) SendMessage(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
 	var req MessageRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -60,34 +54,21 @@ func (h *messageHandlers) SendMessage(c echo.Context) error {
 	if claims == nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "cannot get user information"})
 	}
-	user := claims.Username
 
-	ctx := c.Request().Context()
-
-	if !limiter.Limit(
-		h.redisClient,
-		ctx,
-		200,
-		time.Hour,
-		user,
-		req.ConversationID,
-	) {
-		return c.JSON(http.StatusTooManyRequests, map[string]string{
-			"error": "too many requests",
-		})
-	}
-
-	msgID, err := h.workerClient.SendChatMessage(
-		ctx, req.ConversationID, user, req.Body)
+	response, err := h.queryClient.SendMessage(ctx, query.SendMessageRequest{
+		ConversationID: req.ConversationID,
+		Body:           req.Body,
+		User:           claims.Username,
+		UserID:         claims.UserID,
+		To:             req.To,
+	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "failed to enqueue message",
+			"error": "failed to send messages",
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":     "queued",
-		"message_id": msgID,
-	})
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *messageHandlers) GetMessages(c echo.Context) error {

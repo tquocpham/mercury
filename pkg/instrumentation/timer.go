@@ -53,14 +53,16 @@ func (t *metrcstimer) Done(err error) {
 	t.metrics.Timing(t.name, int64(dur/time.Millisecond), tags...)
 }
 
+type noopLogger struct{}
+
+func (noopLogger) Printf(_ string, _ ...interface{}) {}
+
 func NewMetricsTimer(ctx context.Context, name string, tags ...statsd.Tag) Timer {
 	metrics := StatsdFromContext(ctx)
-	logger := LoggerFromContext(ctx)
 
-	// if no client, dummy statsd client
+	// if no client, use a silent dummy that drops all metrics
 	if metrics == nil {
-		logger.Warn("failed to get statsd client from context - defaulting to dummy statsd client")
-		metrics = statsd.NewClient("localhost:0")
+		metrics = statsd.NewClient("localhost:0", statsd.Logger(noopLogger{}))
 	}
 	start := time.Now()
 

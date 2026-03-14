@@ -21,8 +21,12 @@ import (
 type AuthHandlers interface {
 	Signin(c echo.Context) error
 	Refresh(c echo.Context) error
+	Revoke(c echo.Context) error
 	CreateAccount(c echo.Context) error
 	ActivateAccount(c echo.Context) error
+	GetSession(c echo.Context) error
+	ExtendSession(c echo.Context) error
+	DeleteSession(c echo.Context) error
 }
 
 type authHandlers struct {
@@ -31,14 +35,18 @@ type authHandlers struct {
 	privKey         *rsa.PrivateKey
 	pubKey          *rsa.PublicKey
 	signer          jwt.SigningMethod
+	sessionsManager managers.SessionsManager
 }
 
 func NewAuthHandler(
-	accountsManager managers.AccountsManager, tokenExp time.Duration,
+	accountsManager managers.AccountsManager,
+	sessionsManager managers.SessionsManager,
+	tokenExp time.Duration,
 	keys *config.Keys) AuthHandlers {
 
 	return &authHandlers{
 		accountsManager: accountsManager,
+		sessionsManager: sessionsManager,
 		tokenExp:        tokenExp,
 		privKey:         keys.Private,
 		pubKey:          keys.Public,
@@ -71,9 +79,17 @@ func (h *authHandlers) Signin(c echo.Context) error {
 		rs[i] = string(r)
 	}
 
+	session, err := h.sessionsManager.Create(ctx, account.ID, account.Username, rs, h.tokenExp)
+	if err != nil {
+		return echo.ErrInternalServerError
+		//
+	}
+
 	clms := &middleware.Claims{
-		Username: creds.Username,
-		Roles:    rs,
+		Username:  creds.Username,
+		UserID:    account.ID,
+		Roles:     rs,
+		SessionID: session.SessionID,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expirationTime.Unix(), // In JWT, the expiry time is expressed as unix milliseconds
 		},
@@ -82,7 +98,7 @@ func (h *authHandlers) Signin(c echo.Context) error {
 	token := jwt.NewWithClaims(h.signer, clms)
 	signedToken, err := token.SignedString(h.privKey)
 	if err != nil {
-		return echo.ErrUnauthorized
+		return echo.ErrInternalServerError
 	}
 
 	// Return the token in the response body so the login page can
@@ -93,6 +109,8 @@ func (h *authHandlers) Signin(c echo.Context) error {
 }
 
 func (h *authHandlers) Refresh(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+
 	cookie, err := c.Cookie("session")
 	if err != nil || cookie.Value == "" {
 		return echo.ErrUnauthorized
@@ -112,10 +130,20 @@ func (h *authHandlers) Refresh(c echo.Context) error {
 	if err != nil {
 		return echo.ErrInternalServerError
 	}
+	if err := h.sessionsManager.Refresh(ctx, claims.SessionID, h.tokenExp); err != nil {
+		return echo.ErrInternalServerError
+	}
 
 	return c.JSON(http.StatusOK, auth.TokenResponse{
 		Token: signedToken,
 	})
+}
+
+func (h *authHandlers) Revoke(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	logger := instrumentation.LoggerFromContext(ctx)
+	logger.Debug("not implemented")
+	return nil
 }
 
 func (h *authHandlers) CreateAccount(c echo.Context) error {
@@ -156,4 +184,48 @@ func (h *authHandlers) ActivateAccount(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, auth.TokenResponse{})
+}
+
+func (h *authHandlers) GetSession(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	sessionID := c.Param("sessionid")
+	session, err := h.sessionsManager.Get(ctx, sessionID)
+	if err != nil {
+		return echo.ErrNonExistentKey
+	}
+	return c.JSON(http.StatusOK, auth.SessionResponse{
+		SessionID: session.SessionID,
+		UserID:    session.UserID,
+		Username:  session.Username,
+		Roles:     session.Roles,
+	})
+}
+
+func (h *authHandlers) ExtendSession(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	sessionID := c.Param("sessionid")
+	if err := h.sessionsManager.Refresh(ctx, sessionID, h.tokenExp); err != nil {
+		return echo.ErrInternalServerError
+	}
+	session, err := h.sessionsManager.Get(ctx, sessionID)
+	if err != nil {
+		return echo.ErrNonExistentKey
+	}
+	return c.JSON(http.StatusOK, auth.SessionResponse{
+		SessionID: session.SessionID,
+		UserID:    session.UserID,
+		Username:  session.Username,
+		Roles:     session.Roles,
+	})
+}
+
+func (h *authHandlers) DeleteSession(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	sessionID := c.Param("sessionid")
+	if err := h.sessionsManager.Delete(ctx, sessionID); err != nil {
+		return echo.ErrInternalServerError
+	}
+	return c.JSON(http.StatusOK, auth.DeleteSessionResponse{
+		SessionID: sessionID,
+	})
 }

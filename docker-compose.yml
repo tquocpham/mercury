@@ -1,10 +1,20 @@
 version: "3.9"
 services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # management UI (http://localhost:15672)
+    environment:
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_USER
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_PASSWORD
+
   influxdb:
     image: influxdb:3-core
     restart: always
-    # ports:
-    #   - "8181:8181"
+    ports:
+      - "8181:8181"
     command:
       - influxdb3
       - serve
@@ -28,8 +38,8 @@ services:
     entrypoint: ["/usr/bin/telegraf"]
     depends_on:
       - influxdb
-    # ports:
-    #   - "8125:8125/udp"
+    ports:
+      - "8125:8125/udp"
     volumes:
       - "./docker/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro"
       - "/var/run/docker.sock:/var/run/docker.sock"
@@ -41,8 +51,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: $GRAFANA_PASSWORD
     depends_on:
       - influxdb
-    # ports:
-    #   - "3000:3000"
+    ports:
+      - "3000:3000"
     volumes:
       - "./docker/data/grafana:/var/lib/grafana"
       - "./docker/grafana/provisioning:/etc/grafana/provisioning"
@@ -75,8 +85,8 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: root
     volumes:
       - "./docker/data/mongodb:/data/db"
-    # ports:
-    #   - "27017:27017"
+    ports:
+      - "27017:27017"
   cassandra:
     image: cassandra:4.1
     restart: always
@@ -89,8 +99,8 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: always
-    # ports:
-    #   - "6379:6379"
+    ports:
+      - "6379:6379"
     command: redis-server --save 20 1 --loglevel warning --requirepass $REDIS_PASSWORD
     volumes:
       - "./docker/data/redis:/data"
@@ -106,12 +116,15 @@ services:
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
       MONGO_ADDR: mongodb://root:root@mongo:27017
+      REDIS_ADDR: redis:6379
+      REDIS_PW: $REDIS_PASSWORD
       AWS_ACCESS_KEY: $AWS_ACCESS_KEY
       AWS_SECRET_KEY: $AWS_SECRET_KEY
       AWS_REGION: $AWS_REGION
       AWS_ENDPOINT: $AWS_ENDPOINT
     depends_on:
       - mongo
+      - redis
 
   gateway:
     build:
@@ -124,16 +137,20 @@ services:
       WEB_PORT: "9001"
       KAFKA_BROKER: kafka:29092
       QUERY_HOST: http://query:9002
+      PUBLISHER_ADDR: http://publisher:9003
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
+      REDIS_ADDR: redis:6379
+      REDIS_PW: $REDIS_PASSWORD
       AWS_ACCESS_KEY: $AWS_ACCESS_KEY
       AWS_SECRET_KEY: $AWS_SECRET_KEY
       AWS_REGION: $AWS_REGION
       AWS_ENDPOINT: $AWS_ENDPOINT
     depends_on:
-      # - kafka
+      - kafka
       - query
-
+      - redis
+      - publisher
   query:
     build:
       context: .
@@ -146,8 +163,16 @@ services:
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
       CASSANDRA_HOST: cassandra
-    # depends_on:
-    #   - cassandra
+      PUBLISHER_ADDR: http://publisher:9003
+      KAFKA_BROKER: kafka:29092
+      KAFKA_TOPIC: messages
+      REDIS_ADDR: redis:6379
+      REDIS_PW: $REDIS_PASSWORD
+    depends_on:
+      - cassandra
+      - kafka
+      - publisher
+      - redis
 
   worker:
     build:
@@ -158,9 +183,9 @@ services:
       CASSANDRA_HOST: cassandra
       KAFKA_BROKER: kafka:29092
       PUBLISHER_ADDR: http://publisher:9003
-    # depends_on:
-    #   - kafka
-    #   - cassandra
+    depends_on:
+      - kafka
+      - cassandra
 
   subscriber:
     build:
@@ -176,8 +201,14 @@ services:
       ENVIRONMENT: docker
       REDIS_ADDR: redis:6379
       REDIS_PW: $REDIS_PASSWORD
+      AUTH_HOST: http://auth:9005
+      AWS_ACCESS_KEY: $AWS_ACCESS_KEY
+      AWS_SECRET_KEY: $AWS_SECRET_KEY
+      AWS_REGION: $AWS_REGION
+      AWS_ENDPOINT: $AWS_ENDPOINT
     depends_on:
       - redis
+      - auth
   publisher:
     build:
       context: .

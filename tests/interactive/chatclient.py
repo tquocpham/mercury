@@ -11,14 +11,15 @@ from textual.widgets import Footer, Header, Input, RichLog
 
 
 class ChatClient:
-    def __init__(self, server_addr, auth_addr, convo_id):
+    def __init__(self, server_addr, auth_addr, convo_id, to: list[str]):
         self.__server_addr = server_addr
         self.__auth_addr = auth_addr
         self.__convo_id = convo_id
+        self.__to = to
         self.__token = None
 
     async def login(self, username, password):
-        url = f"{self.__auth_addr}/api/v1/auth"
+        url = f"{self.__auth_addr}/api/v1/auth/login"
         print(url)
         response = await httpx.AsyncClient().post(url, json={
             "credentials": {
@@ -28,6 +29,10 @@ class ChatClient:
         })
         response.raise_for_status()
         self.__token = response.json()['token']
+
+    @property
+    def token(self) -> str | None:
+        return self.__token
 
     def __cookies(self):
         return {"session": self.__token} if self.__token else {}
@@ -55,9 +60,10 @@ class ChatClient:
         return response.json()
 
     async def send_message(self, message):
-        await httpx.AsyncClient().post(f'{self.__server_addr}/api/v1/messages', json={
+        await httpx.AsyncClient(timeout=60.0).post(f'{self.__server_addr}/api/v1/messages', json={
             "conversation_id": self.__convo_id,
             "body": message,
+            "to": self.__to,
         }, cookies=self.__cookies())
 
 
@@ -65,13 +71,12 @@ class ChatApp(App):
     TITLE = "Chat"
     BINDINGS = [("q", "quit", "Quit")]
 
-    def __init__(self, client: ChatClient, user: str, ws_addr: str, convo_id: str):
+    def __init__(self, client: ChatClient, user: str, ws_addr: str):
         super().__init__()
         self.__messages = []
         self.__client = client
         self.__user = user
         self.__ws_addr = ws_addr
-        self.__convo_id = convo_id
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -95,25 +100,24 @@ class ChatApp(App):
 
     async def _ws_listener(self) -> None:
         url = f"{self.__ws_addr}/api/v1/ws"
+        cookie_header = f"session={self.__client.token}"
         try:
-            async with websockets.connect(url) as ws:
-                await ws.send(json.dumps({
-                    "channels": [f"conversation:{self.__convo_id}"]
-                }))
+            async with websockets.connect(url, additional_headers={"Cookie": cookie_header}) as ws:
                 async for raw in ws:
                     try:
                         notification = json.loads(raw)
-                        if notification['type'] != "Message":
+                        if notification.get('type') != "Message":
                             continue
                         payload = notification['payload']
                         mid = payload["message_id"].split('-')[0]
                         self.__messages.insert(0, payload)
                         self.display_message(
                             f'{mid} {payload["user"]}', payload["message"])
-                        # self.display_message(msg["user"], msg["message"])
                     except Exception as ex:
                         self.display_message(
                             "System", f"Websocket parse: {ex} {raw}")
+        except websockets.exceptions.ConnectionClosedOK as e:
+            self.display_message("System", f"WebSocket closed: {e.reason}")
         except Exception as e:
             self.display_message("System", f"WebSocket disconnected: {e}")
 
@@ -162,6 +166,9 @@ if __name__ == "__main__":
                         required=False)
     args = parser.parse_args()
 
-    client = ChatClient(args.addr, args.auth_addr, args.convoid)
-    app = ChatApp(client, args.user, args.ws_addr, args.convoid)
+    to_list = ["bob", "alice", "root"]
+    to_list = []
+    # TODO: figure out how to remember user's chats that they're a part of.
+    client = ChatClient(args.addr, args.auth_addr, args.convoid, to_list)
+    app = ChatApp(client, args.user, args.ws_addr)
     app.run()

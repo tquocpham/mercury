@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,7 @@ type Client interface {
 	Ping(ctx context.Context) (*PingResponse, error)
 	GetMessages(ctx context.Context, conversationID string, props GetMessagesProps) (*GetMessagesResponse, error)
 	RefreshMessages(ctx context.Context, conversationID string, messageID string) (*RefreshMessagesResponse, error)
+	SendMessage(ctx context.Context, req SendMessageRequest) (*SendMessageResponse, error)
 }
 
 type queryClient struct {
@@ -128,8 +130,50 @@ func (c *queryClient) GetMessages(
 	return r, nil
 }
 
+type SendMessageRequest struct {
+	ConversationID string   `json:"conversation_id"`
+	Body           string   `json:"body"`
+	User           string   `json:"user"`
+	UserID         string   `json:"user_id"`
+	To             []string `json:"to"`
+}
+
+type SendMessageResponse struct {
+	Status    string `json:"status"`
+	MessageID string `json:"message_id"`
+}
+
 type RefreshMessagesResponse struct {
 	Messages []MessageResponse `json:"Messages"`
+}
+
+func (c *queryClient) SendMessage(ctx context.Context, req SendMessageRequest) (_ *SendMessageResponse, err error) {
+	t := instrumentation.NewMetricsTimer(ctx, "query.dur", statsd.StringTag("op", "send_message"))
+	defer func() { t.Done(err) }()
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/v1/messages", c.host), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	response, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("query send_message: unexpected status %d", response.StatusCode)
+	}
+	r := &SendMessageResponse{}
+	if err := json.NewDecoder(response.Body).Decode(r); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 func (c *queryClient) RefreshMessages(

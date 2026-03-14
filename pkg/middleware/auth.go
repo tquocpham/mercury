@@ -20,8 +20,10 @@ const SessionCookieName = "session"
 
 // Claims is a struct that will be encoded to a JWT.
 type Claims struct {
-	Username string   `json:"username"`
-	Roles    []string `json:"roles"`
+	Username  string   `json:"username"`
+	UserID    string   `json:"user_id"`
+	SessionID string   `json:"session_id"`
+	Roles     []string `json:"roles"`
 	jwt.StandardClaims
 }
 

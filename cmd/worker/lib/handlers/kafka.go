@@ -54,7 +54,9 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 		messageID = uuid.New().String()
 	}
 
-	if err := h.cassandraClient.SaveMessage(conversationID, messageID, chatData.User, chatData.Message, msg.Time); err != nil {
+	if err := h.cassandraClient.SaveMessage(
+		conversationID, messageID, chatData.User, chatData.Message, msg.Time); err != nil {
+
 		logger.WithError(err).Error("cassandra: save message failed")
 		return kmq.Retry, err
 	}
@@ -69,7 +71,7 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 	_, err := h.publisherClient.SendNotification(
 		ctx,
 		fmt.Sprintf("conversation:%s", conversationID),
-		"Message",
+		publisher.MESSAGE,
 		payload,
 	)
 	if err != nil {
