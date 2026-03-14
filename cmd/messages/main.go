@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/cmd/query/lib/handlers"
-	"github.com/mercury/cmd/query/lib/managers"
+	"github.com/mercury/cmd/messages/lib/handlers"
+	"github.com/mercury/cmd/messages/lib/managers"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/config"

@@ -4,9 +4,9 @@ use (
 	./cmd/auth
 	./cmd/entitlements
 	./cmd/gateway
-	./cmd/subscriber
+	./cmd/messages
 	./cmd/publisher
-	./cmd/query
+	./cmd/subscriber
 	./cmd/worker
 	./pkg
 )
