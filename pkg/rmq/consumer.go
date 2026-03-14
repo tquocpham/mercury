@@ -2,8 +2,10 @@ package rmq
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,7 +19,7 @@ type Handler func(ctx context.Context, body []byte) ([]byte, error)
 type Consumer struct {
 	amqpURL string
 	conn    *amqp.Connection
-	channel *amqp.Channel
+	mu      sync.Mutex
 	logger  *logrus.Logger
 }
 
@@ -30,14 +32,8 @@ func NewConsumer(amqpURL string, logger *logrus.Logger) (*Consumer, error) {
 }
 
 func (c *Consumer) connect() error {
-	// When the msgs channel closes (broker dropped it),
-	// c.connect() is called which creates a new connection,
-	// but the old c.conn is never closed first.
-	// This will leak the old connections.
-	if c.channel != nil {
-		c.channel.Close()
-		c.channel = nil
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
@@ -46,14 +42,17 @@ func (c *Consumer) connect() error {
 	if err != nil {
 		return err
 	}
-	ch, err := conn.Channel()
-	if err != nil {
-		conn.Close()
-		return err
-	}
 	c.conn = conn
-	c.channel = ch
 	return nil
+}
+
+func (c *Consumer) newChannel() (*amqp.Channel, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil || c.conn.IsClosed() {
+		return nil, fmt.Errorf("connection is closed")
+	}
+	return c.conn.Channel()
 }
 
 func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middleware) {
@@ -65,7 +64,7 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 
 	go func() {
 		for {
-			msgs, err := c.startConsuming(queue)
+			ch, msgs, err := c.startConsuming(queue)
 			if err != nil {
 				c.logger.WithError(err).Errorf("mq: failed to start consuming %s, reconnecting in 5s", queue)
 				time.Sleep(5 * time.Second)
@@ -90,9 +89,9 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 
 				msg.Ack(false)
 				if msg.ReplyTo != "" && response != nil {
-					c.channel.Publish(
-						"",          // default exchange
-						msg.ReplyTo, // reply queue
+					ch.Publish(
+						"",
+						msg.ReplyTo,
 						false,
 						false,
 						amqp.Publishing{
@@ -104,6 +103,7 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 				}
 			}
 
+			ch.Close()
 			c.logger.Warnf("mq: consumer channel closed for %s, reconnecting...", queue)
 			if err := c.connect(); err != nil {
 				c.logger.WithError(err).Error("mq: reconnect failed, retrying in 5s")
@@ -113,21 +113,35 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 	}()
 }
 
-func (c *Consumer) startConsuming(queue string) (<-chan amqp.Delivery, error) {
-	_, err := c.channel.QueueDeclare(queue, true, false, false, false, nil)
+func (c *Consumer) startConsuming(queue string) (*amqp.Channel, <-chan amqp.Delivery, error) {
+	ch, err := c.newChannel()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return c.channel.Consume(queue, "", false, false, false, false, nil)
+	if _, err := ch.QueueDeclare(queue, true, false, false, false, nil); err != nil {
+		ch.Close()
+		return nil, nil, err
+	}
+	msgs, err := ch.Consume(queue, "", false, false, false, false, nil)
+	if err != nil {
+		ch.Close()
+		return nil, nil, err
+	}
+	return ch, msgs, nil
 }
 
 func (c *Consumer) Healthy() bool {
-	return c.conn != nil && !c.conn.IsClosed() && c.channel != nil && !c.channel.IsClosed()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil && !c.conn.IsClosed()
 }
 
 func (c *Consumer) Close() {
-	c.channel.Close()
-	c.conn.Close()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn != nil {
+		c.conn.Close()
+	}
 }
 
 // Wait blocks until SIGINT or SIGTERM is received, then logs shutdown.

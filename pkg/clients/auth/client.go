@@ -1,13 +1,11 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 
 	"github.com/mercury/pkg/instrumentation"
+	"github.com/mercury/pkg/rmq"
 	"github.com/smira/go-statsd"
 )
 
@@ -23,13 +21,99 @@ const (
 
 const TokenName = "Token"
 
+type RMQClient interface {
+	Close()
+	Login(ctx context.Context, username, password string) (_ *TokenResponse, err error)
+	Refresh(ctx context.Context, token string) (_ *RefreshResponse, err error)
+	Revoke(ctx context.Context) error
+	CreateAccount(ctx context.Context,
+		username string, email string, password string) (_ *AccountCreationResponse, err error)
+	ActivateAccount(ctx context.Context, accountID string) (_ *ActivateAccountResponse, err error)
+	GetSession(ctx context.Context, sessionID string) (_ *SessionResponse, err error)
+	RefreshSession(ctx context.Context, sessionID string) (_ *SessionResponse, err error)
+	DeleteSession(ctx context.Context, sessionID string) (_ *DeleteSessionResponse, err error)
+}
+
+type rmqClient struct {
+	Publisher *rmq.Publisher
+}
+
+func NewRMQClient(amqpURL string) (RMQClient, error) {
+	publisher, err := rmq.NewPublisher(amqpURL)
+	if err != nil {
+		return nil, err
+	}
+	return &rmqClient{
+		Publisher: publisher,
+	}, nil
+}
+
+func (c *rmqClient) Close() {
+	c.Publisher.Close()
+}
+
+func request[Req any, Resp any](ctx context.Context, p *rmq.Publisher, route string, req Req) (_ *Resp, err error) {
+	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("r", route))
+	defer func() { t.Done(err) }()
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	response, err := p.Request(route, b)
+	if err != nil {
+		return nil, err
+	}
+	var resp Resp
+	if err := json.Unmarshal(response, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // PingResponse is the response for a ping request
 type PingResponse struct {
 	Ping string `json:"ping"`
 }
 
-type SigninRequest struct {
+type LoginRequest struct {
 	Credentials Credentials `json:"credentials"`
+}
+
+type Credentials struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
+type TokenResponse struct {
+	Token string `json:"token"`
+}
+
+func (c *rmqClient) Login(ctx context.Context, username, password string) (_ *TokenResponse, err error) {
+	return request[LoginRequest, TokenResponse](ctx, c.Publisher, "auth.v1.login", LoginRequest{
+		Credentials: Credentials{
+			Username: username,
+			Password: password,
+		},
+	})
+}
+
+type RefreshRequest struct {
+	Token string `json:"token"`
+}
+
+type RefreshResponse struct {
+	Token string `json:"token"`
+}
+
+func (c *rmqClient) Refresh(ctx context.Context, token string) (_ *RefreshResponse, err error) {
+	return request[RefreshRequest, RefreshResponse](ctx, c.Publisher, "auth.v1.refresh", RefreshRequest{
+		Token: token,
+	})
+}
+
+func (c *rmqClient) Revoke(ctx context.Context) error {
+	// TODO: implement
+	return nil
 }
 
 type AccountCreationRequest struct {
@@ -41,14 +125,27 @@ type AccountCreationResponse struct {
 	AccountID string `json:"account_id"`
 }
 
-// Create a struct to read the username and password from the request body
-type Credentials struct {
-	Password string `json:"password"`
-	Username string `json:"username"`
+func (c *rmqClient) CreateAccount(ctx context.Context,
+	username string, email string, password string) (_ *AccountCreationResponse, err error) {
+	return request[AccountCreationRequest, AccountCreationResponse](ctx, c.Publisher, "auth.v1.createaccount", AccountCreationRequest{
+		Username: username,
+		Email:    email,
+		Password: password,
+	})
 }
 
-type TokenResponse struct {
-	Token string `json:"token"`
+type ActivateAccountRequest struct {
+	AccountID string `json:"account_id"`
+}
+
+type ActivateAccountResponse struct {
+	AccountID string `json:"account_id"`
+}
+
+func (c *rmqClient) ActivateAccount(ctx context.Context, accountID string) (_ *ActivateAccountResponse, err error) {
+	return request[ActivateAccountRequest, ActivateAccountResponse](ctx, c.Publisher, "auth.v1.activateaccount", ActivateAccountRequest{
+		AccountID: accountID,
+	})
 }
 
 type SessionResponse struct {
@@ -58,228 +155,36 @@ type SessionResponse struct {
 	Roles     []string `json:"roles"`
 }
 
+type GetSessionRequest struct {
+	SessionID string `json:"session_id"`
+}
+
+func (c *rmqClient) GetSession(ctx context.Context, sessionID string) (_ *SessionResponse, err error) {
+	return request[GetSessionRequest, SessionResponse](ctx, c.Publisher, "auth.v1.getsession", GetSessionRequest{
+		SessionID: sessionID,
+	})
+}
+
+type RefreshSessionRequest struct {
+	SessionID string `json:"session_id"`
+}
+
+func (c *rmqClient) RefreshSession(ctx context.Context, sessionID string) (_ *SessionResponse, err error) {
+	return request[RefreshSessionRequest, SessionResponse](ctx, c.Publisher, "auth.v1.refreshsession", RefreshSessionRequest{
+		SessionID: sessionID,
+	})
+}
+
+type DeleteSessionRequest struct {
+	SessionID string `json:"session_id"`
+}
+
 type DeleteSessionResponse struct {
 	SessionID string `json:"session_id"`
 }
 
-type Client interface {
-	Signin(ctx context.Context, username, password string) (*TokenResponse, error)
-	Refresh(ctx context.Context, cookie *http.Cookie) (*TokenResponse, error)
-	Revoke(ctx context.Context, cookie *http.Cookie) error
-	CreateAccount(ctx context.Context, username, email, password string) (*AccountCreationResponse, error)
-	ActivateAccount(ctx context.Context, accountID string) error
-	GetSession(ctx context.Context, cookie *http.Cookie, sessionID string) (*SessionResponse, error)
-	ExtendSession(ctx context.Context, cookie *http.Cookie, sessionID string) (*SessionResponse, error)
-	DeleteSession(ctx context.Context, cookie *http.Cookie, sessionID string) (*DeleteSessionResponse, error)
-}
-
-type client struct {
-	host       string
-	httpClient *http.Client
-}
-
-func NewClient(host string, httpClient *http.Client) Client {
-	return &client{
-		host:       host,
-		httpClient: httpClient,
-	}
-}
-
-func (c *client) Signin(ctx context.Context, username, password string) (_ *TokenResponse, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "signin"))
-	defer func() { t.Done(err) }()
-
-	body, err := json.Marshal(SigninRequest{Credentials: Credentials{Username: username, Password: password}})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/v1/auth/login", c.host), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth signin: unexpected status %d", resp.StatusCode)
-	}
-	r := &TokenResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (c *client) Refresh(ctx context.Context, cookie *http.Cookie) (_ *TokenResponse, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "refresh"))
-	defer func() { t.Done(err) }()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/v1/auth/refresh", c.host), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.AddCookie(cookie)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth refresh: unexpected status %d", resp.StatusCode)
-	}
-	r := &TokenResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (c *client) Revoke(ctx context.Context, cookie *http.Cookie) (err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "revoke"))
-	defer func() { t.Done(err) }()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/v1/auth/revoke", c.host), nil)
-	if err != nil {
-		return err
-	}
-	req.AddCookie(cookie)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("auth revoke: unexpected status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func (c *client) CreateAccount(ctx context.Context, username, email, password string) (_ *AccountCreationResponse, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "create_account"))
-	defer func() { t.Done(err) }()
-
-	body, err := json.Marshal(AccountCreationRequest{Username: username, Email: email, Password: password})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/v1/account", c.host), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth create_account: unexpected status %d", resp.StatusCode)
-	}
-	r := &AccountCreationResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (c *client) ActivateAccount(ctx context.Context, accountID string) (err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "activate_account"))
-	defer func() { t.Done(err) }()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/v1/account/activate/%s", c.host, accountID), nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("auth activate_account: unexpected status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func (c *client) GetSession(ctx context.Context, cookie *http.Cookie, sessionID string) (_ *SessionResponse, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "get_session"))
-	defer func() { t.Done(err) }()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/session/%s", c.host, sessionID), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.AddCookie(cookie)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth get_session: unexpected status %d", resp.StatusCode)
-	}
-	r := &SessionResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (c *client) ExtendSession(ctx context.Context, cookie *http.Cookie, sessionID string) (_ *SessionResponse, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "extend_session"))
-	defer func() { t.Done(err) }()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fmt.Sprintf("%s/api/v1/session/%s", c.host, sessionID), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.AddCookie(cookie)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth extend_session: unexpected status %d", resp.StatusCode)
-	}
-	r := &SessionResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (c *client) DeleteSession(ctx context.Context, cookie *http.Cookie, sessionID string) (_ *DeleteSessionResponse, err error) {
-	t := instrumentation.NewMetricsTimer(ctx, "auth.dur", statsd.StringTag("op", "delete_session"))
-	defer func() { t.Done(err) }()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, fmt.Sprintf("%s/api/v1/session/%s", c.host, sessionID), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.AddCookie(cookie)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth delete_session: unexpected status %d", resp.StatusCode)
-	}
-	r := &DeleteSessionResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return nil, err
-	}
-	return r, nil
+func (c *rmqClient) DeleteSession(ctx context.Context, sessionID string) (_ *DeleteSessionResponse, err error) {
+	return request[DeleteSessionRequest, DeleteSessionResponse](ctx, c.Publisher, "auth.v1.deletesession", DeleteSessionRequest{
+		SessionID: sessionID,
+	})
 }

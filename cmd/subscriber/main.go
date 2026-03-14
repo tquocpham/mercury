@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/subscriber/lib/handlers"
@@ -32,7 +31,7 @@ func main() {
 	awsSecretKey := cfg.SetDefaultString("aws_secret_key", "test", true)
 	awsRegion := cfg.SetDefaultString("aws_region", "us-west-1", true)
 	awsEndpoint := cfg.SetDefaultString("aws_endpoint", "", false)
-	authHost := cfg.SetDefaultString("auth_host", "http://auth:9005", false)
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -58,7 +57,11 @@ func main() {
 		Password: redisPassword,
 	})
 
-	authClient := auth.NewClient(authHost, http.DefaultClient)
+	authClient, err := auth.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer authClient.Close()
 	handler := handlers.NewNotifierHandlers(authClient, redisClient)
 	e := echo.New()
 	// TODO: intergrate this with statsd. The statsd middleware currently times connection latency

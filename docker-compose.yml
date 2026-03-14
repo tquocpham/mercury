@@ -122,9 +122,11 @@ services:
       AWS_SECRET_KEY: $AWS_SECRET_KEY
       AWS_REGION: $AWS_REGION
       AWS_ENDPOINT: $AWS_ENDPOINT
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - mongo
       - redis
+      - rabbitmq
 
   gateway:
     build:

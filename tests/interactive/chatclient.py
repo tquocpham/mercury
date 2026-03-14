@@ -11,15 +11,14 @@ from textual.widgets import Footer, Header, Input, RichLog
 
 
 class ChatClient:
-    def __init__(self, server_addr, auth_addr, convo_id, to: list[str]):
+    def __init__(self, server_addr, convo_id, to: list[str]):
         self.__server_addr = server_addr
-        self.__auth_addr = auth_addr
         self.__convo_id = convo_id
         self.__to = to
         self.__token = None
 
     async def login(self, username, password):
-        url = f"{self.__auth_addr}/api/v1/auth/login"
+        url = f"{self.__server_addr}/api/v1/auth/login"
         print(url)
         response = await httpx.AsyncClient().post(url, json={
             "credentials": {
@@ -158,9 +157,6 @@ if __name__ == "__main__":
     parser.add_argument("--ws-addr", "-w", help="subscriber WebSocket address",
                         default='ws://localhost:9004',
                         required=False)
-    parser.add_argument("--auth-addr", "-r", help="auth address",
-                        default='http://localhost:9005',
-                        required=False)
     parser.add_argument("--convoid", "-c", help="chat conversation id",
                         default='abc123123',
                         required=False)
@@ -169,6 +165,6 @@ if __name__ == "__main__":
     to_list = ["bob", "alice", "root"]
     to_list = []
     # TODO: figure out how to remember user's chats that they're a part of.
-    client = ChatClient(args.addr, args.auth_addr, args.convoid, to_list)
+    client = ChatClient(args.addr, args.convoid, to_list)
     app = ChatApp(client, args.user, args.ws_addr)
     app.run()

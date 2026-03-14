@@ -15,7 +15,10 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-var ErrDuplicateAccount = errors.New("username or email already taken")
+var (
+	ErrDuplicateAccount = errors.New("username or email already taken")
+	ErrAccountNotFound  = errors.New("account not found")
+)
 
 type AccountsManager interface {
 	GetAccountByUsername(ctx context.Context, username string) (_ *AccountInformation, err error)
@@ -96,7 +99,7 @@ func (u *accountsManager) GetAccountByUsername(ctx context.Context, username str
 	var doc accountDocument
 	if err := u.col.FindOne(ctx, filter).Decode(&doc); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, errors.New("account not found")
+			return nil, ErrAccountNotFound
 		}
 		return nil, err
 	}

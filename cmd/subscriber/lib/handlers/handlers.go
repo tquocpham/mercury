@@ -43,11 +43,11 @@ type NotifierHandlers interface {
 }
 
 type notifierHandlers struct {
-	authClient  auth.Client
+	authClient  auth.RMQClient
 	redisClient *redis.Client
 }
 
-func NewNotifierHandlers(authClient auth.Client, redisClient *redis.Client) NotifierHandlers {
+func NewNotifierHandlers(authClient auth.RMQClient, redisClient *redis.Client) NotifierHandlers {
 	return &notifierHandlers{
 		authClient:  authClient,
 		redisClient: redisClient,
@@ -78,11 +78,7 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 	if claims == nil {
 		return echo.ErrUnauthorized
 	}
-	sessionCookie, err := r.Cookie("session")
-	if err != nil {
-		return echo.ErrUnauthorized
-	}
-	if _, err := h.authClient.GetSession(r.Context(), sessionCookie, claims.SessionID); err != nil {
+	if _, err := h.authClient.GetSession(r.Context(), claims.SessionID); err != nil {
 		logger.WithError(err).Error("session validation failed")
 		return echo.ErrUnauthorized
 	}
@@ -111,7 +107,7 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 	defer ticker.Stop()
 	go func() {
 		for range ticker.C {
-			if _, err := h.authClient.GetSession(r.Context(), sessionCookie, claims.SessionID); err != nil {
+			if _, err := h.authClient.GetSession(r.Context(), claims.SessionID); err != nil {
 				conn.WriteControl(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session expired"),

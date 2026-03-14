@@ -8,6 +8,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gateway/lib/handlers"
+	"github.com/mercury/pkg/clients/auth"
 	"github.com/mercury/pkg/clients/query"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
@@ -30,6 +31,7 @@ func main() {
 	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
 	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
 	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -53,6 +55,11 @@ func main() {
 	queryClient := query.NewClient(queryHost, &http.Client{
 		Timeout: 10 * time.Second,
 	})
+	authClient, err := auth.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer authClient.Close()
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gateway")
 
@@ -62,6 +69,7 @@ func main() {
 	})
 
 	messagesHandler := handlers.NewMessageHandlers(queryClient, redisClient)
+	authHandlers := handlers.NewAuthHandlers(authClient)
 	hch := handlers.NewHealthCheckHandlers()
 
 	// TODO: implement ratelimiter
@@ -82,7 +90,19 @@ func main() {
 		middleware.UseAuth(k.Public))
 	v1.GET("/messages/refresh", messagesHandler.RefreshMessages,
 		middleware.UseAuth(k.Public))
+
+	v1.POST("/auth/login", authHandlers.Login)
+	v1.POST("/auth/refresh", authHandlers.Refresh,
+		middleware.UseAuth(k.Public))
+	v1.POST("/auth/revoke", authHandlers.Revoke,
+		middleware.UseAuth(k.Public, middleware.EnforceRoles("admin")))
+	v1.POST("/account", authHandlers.CreateAccount)
+	// TODO: This link will get emailed out to the user when the email
+	// service is setup. For now it can just be chained from /account
+	v1.POST("/account/activate/:accountid", authHandlers.ActivateAccount)
+
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)
 	}
+
 }
