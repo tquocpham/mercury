@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercury/cmd/worker/lib/managers"
@@ -68,12 +67,8 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 	}
 
 	logger.Debug("sending notification")
-	_, err := h.publisherClient.SendNotification(
-		ctx,
-		fmt.Sprintf("conversation:%s", conversationID),
-		publisher.MESSAGE,
-		payload,
-	)
+	_, err := h.publisherClient.SendMessageNotification(
+		ctx, messageID, chatData.ConversationID, chatData.User, chatData.Message)
 	if err != nil {
 		return kmq.Retry, err
 	}

@@ -46,6 +46,7 @@ func main() {
 		middleware.UseLogger(logger, environment),
 		middleware.UseStatsd(statsdClient))
 	v1.POST("/send", handler.SendNotification)
+	v1.POST("/subscribe", handler.Subscribe)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

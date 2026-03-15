@@ -3,15 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/pkg/clients/auth"
 	"github.com/mercury/pkg/clients/publisher"
+	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/middleware"
 	"github.com/redis/go-redis/v9"
 )
@@ -21,21 +20,6 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
-}
-
-func stringsFromAny(v any) ([]string, bool) {
-	slice, ok := v.([]any)
-	if !ok {
-		return nil, false
-	}
-	out := make([]string, len(slice))
-	for i, s := range slice {
-		out[i], ok = s.(string)
-		if !ok {
-			return nil, false
-		}
-	}
-	return out, true
 }
 
 type NotifierHandlers interface {
@@ -54,20 +38,13 @@ func NewNotifierHandlers(authClient auth.RMQClient, redisClient *redis.Client) N
 	}
 }
 
-type WebSocketRequest struct {
-	Token string `json:"token"`
-}
-
-type WebSocketRPC struct {
-	Version     string         `json:"ver"`
-	Command     string         `json:"cmd"`
-	ReferenceID string         `json:"ref"`
-	Token       string         `json:"token"`
-	Payload     map[string]any `json:"payload"`
-	// Channels []string `json:"channels"`
+type NotificationEnvelope struct {
+	Type    publisher.NotificationName `json:"type"`
+	Payload any                        `json:"payload"`
 }
 
 func (h *notifierHandlers) NotifyClient(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
 	logger := middleware.GetLogger(c)
 	w := c.Response()
 	r := c.Request()
@@ -91,18 +68,26 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 	}
 	defer conn.Close()
 
-	subscribed := map[string]bool{
-		fmt.Sprintf("client:%s", claims.UserID):       true, // for sending pubsub commands
-		fmt.Sprintf("conversation:%s", claims.UserID): true, // for sending system chat
-		"conversation:abc123123":                      true,
+	// TODO: POPULATE THIS FROM REDIS
+	subscribed := []string{
+		publisher.UserChannel(claims.UserID),          // for sending pubsub commands
+		fmt.Sprintf("conversation:%s", claims.UserID), // for sending system chat
+		"conversation:abc123123",                      // testing channel
 	}
-	keys := slices.Collect(maps.Keys(subscribed))
+	key := fmt.Sprintf("user:%s:channels", claims.UserID)
+	channel := h.redisClient.SMembers(ctx, key)
+	subbed, err := channel.Result()
+	if err != nil {
+		return echo.ErrInternalServerError
+	}
+	mergedsubs := append(subscribed, subbed...)
+
 	pubsub := h.redisClient.Subscribe(r.Context(),
-		keys...,
+		mergedsubs...,
 	)
 	defer pubsub.Close()
 
-	// poll Redis every 30s; close connection if session has been revoked
+	// poll Redis. Close connection if session has been revoked
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	go func() {
@@ -121,50 +106,65 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 
 	go func() {
 		for msg := range pubsub.Channel() {
-			notification := &publisher.Notification{}
+			notification := &publisher.SendNotificationRequest{}
 			if err := json.Unmarshal([]byte(msg.Payload), notification); err != nil {
 				logger.Error("failed to parse message")
 				continue
 			}
 			switch notification.Type {
-			case publisher.COMMAND:
-				command, ok := notification.Payload["cmd"]
-				if !ok {
-					logger.Error("failed to get cmd from payload")
+			case publisher.SUBSCRIBE:
+				payload := &publisher.SubscribePayload{}
+				if err := json.Unmarshal(notification.Payload, payload); err != nil {
+					logger.Error("failed to parse subscribe payload")
 					continue
 				}
-				switch command {
-				case "subscribe":
-					channels, ok := stringsFromAny(notification.Payload["channels"])
-					if !ok {
-						logger.Error("failed to get channels from payload")
-						continue
+				// TODO: Check here to make sure that we're not already subscribed
+				channels := payload.Channels
+				if len(channels) > 0 {
+					if err := pubsub.Subscribe(r.Context(), channels...); err != nil {
+						logger.WithError(err).Error("failed to subscribe to additional channels")
 					}
-					var newChannels []string
-					for _, ch := range channels {
-						if !subscribed[ch] {
-							newChannels = append(newChannels, ch)
-							subscribed[ch] = true
-						}
-					}
-					if len(newChannels) > 0 {
-						if err := pubsub.Subscribe(r.Context(), newChannels...); err != nil {
-							logger.WithError(err).Error("failed to subscribe to additional channels")
-						}
-					}
-				case "disconnect":
-					conn.WriteControl(
-						websocket.CloseMessage,
-						websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session terminated"),
-						time.Now().Add(time.Second),
-					)
-					conn.Close()
 				}
-				continue
-			}
-			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
-				logger.WithError(err).Error("failed to send message to client")
-				return
+			case publisher.DISCONNECT:
+				conn.WriteControl(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session terminated"),
+					time.Now().Add(time.Second),
+				)
+				conn.Close()
+			case publisher.UNSUBSCRIBE:
+				payload := &publisher.UnsubscribePayload{}
+				if err := json.Unmarshal(notification.Payload, payload); err != nil {
+					logger.Error("failed to parse subscribe payload")
+					continue
+				}
+				// TODO: Check here to make sure that we're not already subscribed
+				channels := payload.Channels
+				if len(channels) > 0 {
+					if err := pubsub.Unsubscribe(r.Context(), channels...); err != nil {
+						logger.WithError(err).Error("failed to unsubscribe to additional channels")
+					}
+				}
+			case publisher.MESSAGE:
+				payload := &publisher.MessagePayload{}
+				if err := json.Unmarshal(notification.Payload, payload); err != nil {
+					logger.Error("failed to parse message payload")
+					continue
+				}
+				notification, err := json.Marshal(&NotificationEnvelope{
+					Type:    publisher.MESSAGE,
+					Payload: payload,
+				})
+				if err != nil {
+					logger.Error("failed to parse message payload")
+					continue
+				}
+				if err := conn.WriteMessage(websocket.TextMessage, notification); err != nil {
+					logger.WithError(err).Error("failed to send message to client")
+					return
+				}
+			case publisher.TOAST:
+				logger.Error("Not implemented")
 			}
 		}
 	}()

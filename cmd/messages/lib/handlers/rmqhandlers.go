@@ -100,21 +100,11 @@ func (h *rmqHanders) SendMessage(ctx context.Context, body []byte) ([]byte, erro
 	// if direct message this tells the recievers to subscribe to the
 	// pubsub associated with the chat to get updates
 	for _, userID := range request.To {
-		resp, err := h.publisherClient.SendNotification(ctx,
-			fmt.Sprintf("client:%s", userID),
-			publisher.COMMAND,
-			map[string]any{
-				"cmd":      "subscribe",
-				"channels": []string{fmt.Sprintf("conversation:%s", request.ConversationID)},
-			},
-		)
+		channel := fmt.Sprintf("conversation:%s", request.ConversationID)
+		_, err := h.publisherClient.Subscribe(ctx, userID, []string{channel})
 		if err != nil {
 			logger.WithError(err).Errorf("failed to notify user %s to subscribe", userID)
 			continue
-		}
-		if resp.Notified == 0 {
-			h.workerClient.SendChatMessage(
-				ctx, user, "system", fmt.Sprintf("user %s is offline", userID))
 		}
 	}
 	msgID, err := h.workerClient.SendChatMessage(
