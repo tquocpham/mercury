@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/mercury/pkg/middleware"
 	"github.com/smira/go-statsd"
 )
 
@@ -53,16 +54,12 @@ func (t *metrcstimer) Done(err error) {
 	t.metrics.Timing(t.name, int64(dur/time.Millisecond), tags...)
 }
 
-type noopLogger struct{}
-
-func (noopLogger) Printf(_ string, _ ...interface{}) {}
-
 func NewMetricsTimer(ctx context.Context, name string, tags ...statsd.Tag) Timer {
 	metrics := StatsdFromContext(ctx)
 
 	// if no client, use a silent dummy that drops all metrics
 	if metrics == nil {
-		metrics = statsd.NewClient("localhost:0", statsd.Logger(noopLogger{}))
+		metrics = statsd.NewClient("localhost:0", statsd.Logger(middleware.StatsDNoopLogger{}))
 	}
 	start := time.Now()
 

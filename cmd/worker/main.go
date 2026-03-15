@@ -1,11 +1,9 @@
 package main
 
 import (
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/mercury/cmd/worker/lib/handlers"
 	"github.com/mercury/cmd/worker/lib/managers"
@@ -22,6 +20,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
 	topic := cfg.SetDefaultString("kafka_topic", "messages", true)
 	broker := cfg.SetDefaultString("kafka_broker", "kafka:9092", true)
@@ -29,7 +28,6 @@ func main() {
 	environment := cfg.SetDefaultString("environment", "local", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	cassHost := cfg.SetDefaultString("cassandra_host", "cassandras", false)
-	publisherAddr := cfg.SetDefaultString("publisher_addr", "http://publisher:9003", true)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -49,9 +47,11 @@ func main() {
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "worker")
 
-	publisherClient := publisher.NewClient(publisherAddr, &http.Client{
-		Timeout: 10 * time.Second,
-	})
+	publisherClient, err := publisher.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer publisherClient.Close()
 
 	consumer := kmq.NewKafkaConsumer(brokers, groupID, topic, logger)
 	defer consumer.Close()

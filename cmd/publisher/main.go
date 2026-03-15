@@ -1,13 +1,10 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/publisher/lib/handlers"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
-	"github.com/mercury/pkg/server"
+	"github.com/mercury/pkg/rmq"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
@@ -18,11 +15,10 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	port := cfg.SetDefaultString("web_port", "80", false)
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", false)
 	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
 	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
-	environment := cfg.SetDefaultString("environment", "local", false)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 
 	logger := logrus.New()
@@ -40,15 +36,17 @@ func main() {
 		Password: redisPassword,
 	})
 
-	handler := handlers.NewPublisherHandlers(redisClient)
-	e := echo.New()
-	v1 := e.Group("api/v1",
-		middleware.UseLogger(logger, environment),
-		middleware.UseStatsd(statsdClient))
-	v1.POST("/send", handler.SendNotification)
-	v1.POST("/subscribe", handler.Subscribe)
-
-	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
-		logger.Fatal(err)
+	rmqHandler := handlers.NewRMQHandlers(redisClient)
+	consumer, err := rmq.NewConsumer(amqpURL, logger)
+	if err != nil {
+		logrus.Fatal(err)
 	}
+	defer consumer.Close()
+	consumer.Consume("pbs.v1.sendnotification", rmqHandler.SendNotification,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient))
+	consumer.Consume("pbs.v1.subscribe", rmqHandler.Subscribe,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient))
+	consumer.Wait()
 }

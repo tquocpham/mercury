@@ -18,10 +18,10 @@ type KafkaHandlers interface {
 
 type kafkaHandlers struct {
 	cassandraClient managers.CassandraClient
-	publisherClient publisher.Client
+	publisherClient publisher.RMQClient
 }
 
-func NewKafkaHandlers(cassandraClient managers.CassandraClient, publisherClient publisher.Client) KafkaHandlers {
+func NewKafkaHandlers(cassandraClient managers.CassandraClient, publisherClient publisher.RMQClient) KafkaHandlers {
 	return &kafkaHandlers{
 		cassandraClient: cassandraClient,
 		publisherClient: publisherClient,
@@ -70,7 +70,7 @@ func (h *kafkaHandlers) SaveMessage(ctx context.Context, msg kafka.Message) (kmq
 	_, err := h.publisherClient.SendMessageNotification(
 		ctx, messageID, chatData.ConversationID, chatData.User, chatData.Message)
 	if err != nil {
-		return kmq.Retry, err
+		return kmq.Success, err
 	}
 	return kmq.Success, nil
 }

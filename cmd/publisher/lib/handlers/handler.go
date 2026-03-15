@@ -82,7 +82,6 @@ func (h *publisherHandlers) Subscribe(c echo.Context) error {
 		Channel:     userChannel,
 		Type:        publisher.SUBSCRIBE,
 		Payload:     payload,
-		Version:     "1",
 		ReferenceID: referenceID,
 	})
 	if err != nil {

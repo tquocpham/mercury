@@ -23,14 +23,14 @@ type RMQHandlers interface {
 }
 type rmqHanders struct {
 	cassandraClient managers.CassandraClient
-	publisherClient publisher.Client
+	publisherClient publisher.RMQClient
 	workerClient    worker.WorkerClient
 	redisClient     *redis.Client
 }
 
 func NewRMQHandlers(
 	cassandraClient managers.CassandraClient,
-	publisherClient publisher.Client,
+	publisherClient publisher.RMQClient,
 	workerClient worker.WorkerClient,
 	redisClient *redis.Client,
 ) RMQHandlers {
@@ -43,21 +43,25 @@ func NewRMQHandlers(
 }
 
 func (h *rmqHanders) GetMessages(ctx context.Context, body []byte) ([]byte, error) {
+	logger := rmq.GetLogger(ctx)
 	request := &messages.GetMessagesRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		logger.WithError(err).Error("failed to unmarshal get messages request")
+		return nil, messages.ErrInvalidRequest
 	}
 	pagingState := []byte(nil)
 	nextToken := request.NextToken
 	if nextToken != "" {
 		parsed, parsedErr := base64.StdEncoding.DecodeString(nextToken)
 		if parsedErr != nil {
+			logger.WithError(parsedErr).Error("failed to decode next token")
 			return nil, messages.ErrInvalidNextToken
 		}
 		pagingState = parsed
 	}
 	msgHistory, err := h.cassandraClient.GetMessages(request.ConversationID, request.Limit, pagingState)
 	if err != nil {
+		logger.WithError(err).Error("failed to get messages from cassandra")
 		return nil, messages.ErrFailedToGetMessages
 	}
 	msgs := make([]messages.MessageResponse, len(msgHistory.Messages))
@@ -84,7 +88,8 @@ func (h *rmqHanders) SendMessage(ctx context.Context, body []byte) ([]byte, erro
 	logger := rmq.GetLogger(ctx)
 	request := &messages.SendMessageRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		logger.WithError(err).Error("failed to unmarshal send message request")
+		return nil, messages.ErrInvalidRequest
 	}
 	user := request.User
 	if !server.Limit(
@@ -104,13 +109,15 @@ func (h *rmqHanders) SendMessage(ctx context.Context, body []byte) ([]byte, erro
 		_, err := h.publisherClient.Subscribe(ctx, userID, []string{channel})
 		if err != nil {
 			logger.WithError(err).Errorf("failed to notify user %s to subscribe", userID)
+			// TODO: build a mechanims for eventual consistency here
 			continue
 		}
 	}
 	msgID, err := h.workerClient.SendChatMessage(
 		ctx, request.ConversationID, user, request.Body)
 	if err != nil {
-		return nil, err
+		logger.WithError(err).Error("failed to send chat message")
+		return nil, messages.ErrFailedToSendMessage
 	}
 	return json.Marshal(messages.SendMessageResponse{
 		Status:    "queued",
@@ -122,7 +129,8 @@ func (h *rmqHanders) RefreshMessages(ctx context.Context, body []byte) ([]byte, 
 	logger := rmq.GetLogger(ctx)
 	request := &messages.RefreshMessagesRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		logger.WithError(err).Error("failed to unmarshal refresh messages request")
+		return nil, messages.ErrInvalidRequest
 	}
 	msgHistory, err := h.cassandraClient.RefreshMessages(request.ConversationID, request.MessageID)
 	if err != nil {

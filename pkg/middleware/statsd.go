@@ -44,10 +44,14 @@ func UseStatsd(client *statsd.Client) echo.MiddlewareFunc {
 	}
 }
 
+type StatsDNoopLogger struct{}
+
+func (StatsDNoopLogger) Printf(_ string, _ ...interface{}) {}
+
 func GetStatsd(c echo.Context) *statsd.Client {
 	s, ok := c.Get(ContextKeyStatsd).(*statsd.Client)
 	if !ok || s == nil {
-		return statsd.NewClient("")
+		return statsd.NewClient("localhost:0", statsd.Logger(StatsDNoopLogger{}))
 	}
 	return s
 }

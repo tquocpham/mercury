@@ -1,9 +1,6 @@
 package main
 
 import (
-	"net/http"
-	"time"
-
 	"github.com/mercury/cmd/messages/lib/handlers"
 	"github.com/mercury/cmd/messages/lib/managers"
 	"github.com/mercury/pkg/clients/publisher"
@@ -26,7 +23,6 @@ func main() {
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	cassHost := cfg.SetDefaultString("cassandra_host", "cassandra", false)
-	publisherHost := cfg.SetDefaultString("publisher_addr", "http://publisher:9003", true)
 	broker := cfg.SetDefaultString("kafka_broker", "kafka:9092", true)
 	topic := cfg.SetDefaultString("kafka_topic", "messages", true)
 	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
@@ -53,9 +49,11 @@ func main() {
 	defer producer.Close()
 	workerClient := worker.NewClient(topic, producer)
 
-	publisherClient := publisher.NewClient(publisherHost, &http.Client{
-		Timeout: 5 * time.Second,
-	})
+	publisherClient, err := publisher.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer publisherClient.Close()
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,

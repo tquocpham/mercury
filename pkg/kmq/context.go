@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mercury/pkg/middleware"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
 	"github.com/smira/go-statsd"
@@ -82,7 +83,7 @@ func UseStatsd(client *statsd.Client) Middleware {
 func StatsdFromContext(ctx context.Context) *statsd.Client {
 	l, _ := ctx.Value(statsdCtxKey{}).(*statsd.Client)
 	if l == nil {
-		return statsd.NewClient("localhost:0")
+		return statsd.NewClient("localhost:0", statsd.Logger(middleware.StatsDNoopLogger{}))
 	}
 	return l
 }

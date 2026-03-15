@@ -137,26 +137,20 @@ services:
       - "9001:9001"
     environment:
       WEB_PORT: "9001"
-      KAFKA_BROKER: kafka:29092
-      QUERY_HOST: http://query:9002
-      PUBLISHER_ADDR: http://publisher:9003
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
-      REDIS_ADDR: redis:6379
-      REDIS_PW: $REDIS_PASSWORD
       AWS_ACCESS_KEY: $AWS_ACCESS_KEY
       AWS_SECRET_KEY: $AWS_SECRET_KEY
       AWS_REGION: $AWS_REGION
       AWS_ENDPOINT: $AWS_ENDPOINT
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
-      - kafka
-      - query
-      - redis
-      - publisher
-  query:
+      - rabbitmq
+
+  messages:
     build:
       context: .
-      dockerfile: cmd/query/Dockerfile
+      dockerfile: cmd/messages/Dockerfile
     restart: always
     ports:
       - "9002:9002"
@@ -165,15 +159,15 @@ services:
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
       CASSANDRA_HOST: cassandra
-      PUBLISHER_ADDR: http://publisher:9003
       KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC: messages
       REDIS_ADDR: redis:6379
       REDIS_PW: $REDIS_PASSWORD
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - cassandra
       - kafka
-      - publisher
+      - rabbitmq
       - redis
 
   worker:
@@ -182,12 +176,18 @@ services:
       dockerfile: cmd/worker/Dockerfile
     restart: always
     environment:
+      LOG_LEVEL: info
+      ENVIRONMENT: docker
+      STATSD_ADDR: telegraf:8125
       CASSANDRA_HOST: cassandra
       KAFKA_BROKER: kafka:29092
-      PUBLISHER_ADDR: http://publisher:9003
+      KAFKA_TOPIC: messages
+      KAFKA_GROUP_ID: messages-consumer-group
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - kafka
       - cassandra
+      - rabbitmq
 
   subscriber:
     build:
@@ -203,14 +203,15 @@ services:
       ENVIRONMENT: docker
       REDIS_ADDR: redis:6379
       REDIS_PW: $REDIS_PASSWORD
-      AUTH_HOST: http://auth:9005
       AWS_ACCESS_KEY: $AWS_ACCESS_KEY
       AWS_SECRET_KEY: $AWS_SECRET_KEY
       AWS_REGION: $AWS_REGION
       AWS_ENDPOINT: $AWS_ENDPOINT
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - redis
-      - auth
+      - rabbitmq
+
   publisher:
     build:
       context: .
@@ -225,5 +226,7 @@ services:
       ENVIRONMENT: docker
       REDIS_ADDR: redis:6379
       REDIS_PW: $REDIS_PASSWORD
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - redis
+      - rabbitmq

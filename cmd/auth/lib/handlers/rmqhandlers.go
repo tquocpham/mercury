@@ -27,6 +27,7 @@ type RMQHandlers interface {
 	RefreshSession(ctx context.Context, body []byte) ([]byte, error)
 	DeleteSession(ctx context.Context, body []byte) ([]byte, error)
 }
+
 type rmqHanders struct {
 	accountsManager managers.AccountsManager
 	tokenExp        time.Duration
@@ -55,7 +56,7 @@ func NewRMQHandlers(
 func (h *rmqHanders) Login(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.LoginRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	creds := request.Credentials
 	// get account info and check if the passwords match
@@ -64,7 +65,7 @@ func (h *rmqHanders) Login(ctx context.Context, body []byte) ([]byte, error) {
 		if errors.Is(err, managers.ErrAccountNotFound) {
 			return nil, auth.ErrUnauthorized
 		}
-		return nil, err
+		return nil, auth.ErrFailedToQueryAccount
 	}
 	if !hash.CheckPasswordHash(creds.Password, account.Salt, account.Password) {
 		return nil, auth.ErrUnauthorized
@@ -104,7 +105,7 @@ func (h *rmqHanders) Login(ctx context.Context, body []byte) ([]byte, error) {
 func (h *rmqHanders) Refresh(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.RefreshRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	claims, err := middleware.ValidateToken(request.Token, h.pubKey)
 	if err != nil {
@@ -138,7 +139,7 @@ func (h *rmqHanders) CreateAccount(ctx context.Context, body []byte) ([]byte, er
 	logger := rmq.GetLogger(ctx)
 	request := &auth.AccountCreationRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	account, err := h.accountsManager.CreateAccount(ctx, request.Username, request.Email, request.Password, []auth.Role{
 		auth.UserRole,
@@ -161,7 +162,7 @@ func (h *rmqHanders) CreateAccount(ctx context.Context, body []byte) ([]byte, er
 func (h *rmqHanders) ActivateAccount(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.ActivateAccountRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	accountID := request.AccountID
 	if err := h.accountsManager.ActivateAccount(ctx, accountID); err != nil {
@@ -175,7 +176,7 @@ func (h *rmqHanders) ActivateAccount(ctx context.Context, body []byte) ([]byte, 
 func (h *rmqHanders) GetSession(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.GetSessionRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	sessionID := request.SessionID
 	session, err := h.sessionsManager.Get(ctx, sessionID)
@@ -193,7 +194,7 @@ func (h *rmqHanders) GetSession(ctx context.Context, body []byte) ([]byte, error
 func (h *rmqHanders) RefreshSession(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.RefreshSessionRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	sessionID := request.SessionID
 	if err := h.sessionsManager.Refresh(ctx, sessionID, h.tokenExp); err != nil {
@@ -214,7 +215,7 @@ func (h *rmqHanders) RefreshSession(ctx context.Context, body []byte) ([]byte, e
 func (h *rmqHanders) DeleteSession(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.DeleteSessionRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		return nil, err
+		return nil, auth.ErrInvalidRequest
 	}
 	sessionID := request.SessionID
 	if err := h.sessionsManager.Delete(ctx, sessionID); err != nil {

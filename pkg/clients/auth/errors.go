@@ -8,7 +8,9 @@ import (
 )
 
 var (
+	ErrInvalidRequest          = errors.New("failed to read request")
 	ErrUnauthorized            = errors.New("unauthorized")
+	ErrFailedToQueryAccount    = errors.New("failed to query account")
 	ErrSessionCreationFailed   = errors.New("session failed to create")
 	ErrTokenSignatureFailed    = errors.New("failed to create signed token")
 	ErrAccountDuplicate        = errors.New("username or email already taken")
@@ -21,11 +23,14 @@ var (
 
 func ConvertHttpError(err error) error {
 	switch {
+	case errors.Is(err, ErrInvalidRequest):
+		return echo.ErrBadRequest
 	case errors.Is(err, ErrUnauthorized):
 		return echo.ErrUnauthorized
 	case errors.Is(err, ErrAccountDuplicate):
 		return echo.NewHTTPError(http.StatusConflict)
 	case errors.Is(err, ErrAccountCreationFailed),
+		errors.Is(err, ErrFailedToQueryAccount),
 		errors.Is(err, ErrSessionCreationFailed),
 		errors.Is(err, ErrTokenSignatureFailed),
 		errors.Is(err, ErrNoSessionFound),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/mercury/pkg/middleware"
 	"github.com/sirupsen/logrus"
 	"github.com/smira/go-statsd"
 )
@@ -35,7 +36,7 @@ func GetMetrics(ctx context.Context) *statsd.Client {
 	entry, ok := ctx.Value(statsdKey).(*statsd.Client)
 	if !ok || entry == nil {
 		// UDP just drops silently, nothing listens, nothing errors
-		return statsd.NewClient("localhost:9999")
+		return statsd.NewClient("localhost:0", statsd.Logger(middleware.StatsDNoopLogger{}))
 	}
 	return entry
 }
