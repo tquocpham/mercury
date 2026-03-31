@@ -251,3 +251,23 @@ services:
     depends_on:
       - mongo
       - rabbitmq
+
+  gatewaypriv:
+    build:
+      context: .
+      dockerfile: cmd/gatewaypriv/Dockerfile
+    restart: always
+    ports:
+      - "9002:9002"
+    environment:
+      WEB_PORT: "9002"
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      AWS_ACCESS_KEY: $AWS_ACCESS_KEY
+      AWS_SECRET_KEY: $AWS_SECRET_KEY
+      AWS_REGION: $AWS_REGION
+      AWS_ENDPOINT: $AWS_ENDPOINT
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - rabbitmq

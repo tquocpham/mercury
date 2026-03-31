@@ -111,9 +111,7 @@ func main() {
 	v1.POST("/account/activate/:accountid", authHandlers.ActivateAccount)
 
 	v1.POST("/mm/join/party", mmHandlers.QueueParty)
-	v1.GET("/mm/join/party/:partyid", mmHandlers.QueueParty)
-	// TODO: move this to gatewaypiv.
-	v1.POST("/mm/register/gameserver", mmHandlers.RegisterGameserver)
+	v1.GET("/mm/join/party/:partyid", mmHandlers.GetQueue)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/pkg/clients/auth"
-	"github.com/mercury/pkg/clients/messages"
+	"github.com/mercury/cmd/gatewaypriv/lib/handlers"
+	"github.com/mercury/pkg/clients/matchmaking"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
@@ -23,7 +23,6 @@ func main() {
 	logLevel := cfg.SetDefaultString("log_level", "info", false)
 	environment := cfg.SetDefaultString("environment", "local", false)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
 	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	awsAccessKey := cfg.SetDefaultString("aws_access_key", "test", true)
 	awsSecretKey := cfg.SetDefaultString("aws_secret_key", "test", true)
@@ -45,49 +44,37 @@ func main() {
 		}).Info("config")
 	}
 
+	// Load public key for JWT validation (game servers authenticate with the same JWT infra)
 	ssmClient := config.NewSSMClient(context.Background(), config.AWSConfig{
 		AccessKey: awsAccessKey,
 		SecretKey: awsSecretKey,
 		Region:    awsRegion,
 		Endpoint:  awsEndpoint,
 	})
+	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
 	k := config.NewKeys()
 	if err := k.LoadPublicFromSSM(ssmClient, pubKeySSMParam); err != nil {
 		panic(err)
 	}
 
-	msgsClient, err := messages.NewRMQClient(amqpURL)
+	mmClient, err := matchmaking.NewRMQClient(amqpURL)
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	defer msgsClient.Close()
-	authClient, err := auth.NewRMQClient(amqpURL)
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	defer authClient.Close()
+	defer mmClient.Close()
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "gateway")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "gatewaypriv")
+	gsHandlers := handlers.NewGameserverHandlers(mmClient)
 
-	// hch := handlers.NewHealthCheckHandlers()
-
-	// TODO: implement ratelimiter
-	// https://pkg.go.dev/github.com/webx-top/echo/middleware/ratelimiter#RateLimiterWithConfig
 	e := echo.New()
-	hc := e.Group("api/v1/hc",
+	v1 := e.Group("api/v1",
 		middleware.UseLogger(logger, environment),
 		middleware.UseStatsd(statsdClient))
-	print(hc)
-	// hc.GET("/ping", hch.Ping)
-	// v1 := e.Group("api/v1",
-	// 	middleware.UseLogger(logger, environment),
-	// 	middleware.UseStatsd(statsdClient))
-	// gsv1 := v1.Group("gs")
-	// gsv1.POST("/register", hch.Ping)
-	// gsv1.POST("/deregister", hch.Ping)
+	gsv1 := v1.Group("/gs")
+	gsv1.POST("/register", gsHandlers.Register)
+	gsv1.POST("/unregister", gsHandlers.Unregister)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)
 	}
-
 }

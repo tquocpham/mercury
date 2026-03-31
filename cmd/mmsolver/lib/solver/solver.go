@@ -83,13 +83,13 @@ func (s *mmSolver) solve(logger *logrus.Entry, ctx context.Context) (bool, error
 		return false, err
 	}
 
-	// check to see if states is still valid
+	// check to see if gameserver states are still valid
 	for _, gs := range gameservers {
-		// Check with Auth that all players are still valid.
 		// if player is not valid remove it from the list
 		fmt.Println(gs)
 	}
 	// check to see if parties is still valid
+	// Check with Auth that all players are still valid.
 	for _, party := range parties {
 		// Check that party's server is still valid, else open them up to be reassigned
 		fmt.Println(party)

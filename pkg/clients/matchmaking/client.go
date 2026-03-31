@@ -15,6 +15,8 @@ type RMQClient interface {
 	GameserverRegister(
 		ctx context.Context, serverID string, ipAddress string, port int,
 		capacity int) (*GSRegisterResponse, error)
+	GameserverUnregister(
+		ctx context.Context, serverID string, version int) (*GSUnregisterResponse, error)
 }
 
 type rmqClient struct {
@@ -90,5 +92,21 @@ func (c *rmqClient) GameserverRegister(
 		IPAddress: ipAddress,
 		Port:      port,
 		Capacity:  capacity,
+	})
+}
+
+type GSUnregisterRequest struct {
+	ServerID string `json:"server_id"`
+	Version  int    `json:"version"`
+}
+
+type GSUnregisterResponse struct {
+}
+
+func (c *rmqClient) GameserverUnregister(
+	ctx context.Context, serverID string, version int) (*GSUnregisterResponse, error) {
+	return rmq.Request[GSUnregisterRequest, GSUnregisterResponse](ctx, c.Publisher, "mm.v1.gsunregister", GSUnregisterRequest{
+		ServerID: serverID,
+		Version:  version,
 	})
 }

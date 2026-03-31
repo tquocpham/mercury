@@ -67,10 +67,11 @@ func main() {
 
 	gcPubsubDispatcher := session.NewPubSubDispatcher()
 	gcPubsubDispatcher.RegisterOnSub(publisher.SUBSCRIBE, handlers.OnSubscribe)
-	gcPubsubDispatcher.RegisterOnSub(publisher.UNSUBSCRIBE, handlers.OnSubscribe)
+	gcPubsubDispatcher.RegisterOnSub(publisher.UNSUBSCRIBE, handlers.OnUnsubscribe)
 	gcPubsubDispatcher.RegisterOnSub(publisher.DISCONNECT, handlers.OnDisconnect)
 	gcPubsubDispatcher.RegisterOnSub(publisher.MESSAGE, handlers.OnMessage)
-	gcPubsubDispatcher.RegisterOnSub(publisher.TOAST, handlers.OnMessage)
+	gcPubsubDispatcher.RegisterOnSub(publisher.TOAST, handlers.OnToast)
+	gcPubsubDispatcher.RegisterOnSub(publisher.MATCHMAKE, handlers.OnMatchmake)
 
 	handler := handlers.NewNotifierHandlers(authClient, redisClient, gcPubsubDispatcher)
 	e := echo.New()

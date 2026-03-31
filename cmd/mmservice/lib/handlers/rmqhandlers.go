@@ -86,5 +86,16 @@ func (h *rmqHanders) GameserverRegister(ctx context.Context, body []byte) ([]byt
 }
 
 func (h *rmqHanders) GameserverUnregister(ctx context.Context, body []byte) ([]byte, error) {
-	return nil, nil
+	logger := rmq.GetLogger(ctx)
+	request := &matchmaking.GSUnregisterRequest{}
+	if err := json.Unmarshal(body, request); err != nil {
+		logger.WithError(err).Error("Failed to parse gameserver unregister request")
+		return nil, matchmaking.ErrInvalidRequest
+	}
+	err := h.mmManager.UpdateServerState(ctx, request.ServerID, request.Version, managers.Draining)
+	if err != nil {
+		logger.WithError(err).Error("Failed to unregister game server")
+		return nil, matchmaking.ErrFailedToRegisterGameserver
+	}
+	return json.Marshal(matchmaking.GSUnregisterResponse{})
 }

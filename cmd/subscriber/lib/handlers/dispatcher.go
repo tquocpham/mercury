@@ -79,3 +79,22 @@ func OnToast(
 	logger.Error("Not implemented")
 	return nil
 }
+
+func OnMatchmake(
+	ctx context.Context, logger *logrus.Entry, notification *publisher.SendNotificationRequest,
+	pubsub *redis.PubSub, send chan<- []byte, done chan<- struct{}) error {
+
+	payload := &publisher.MatchmakePayload{}
+	if err := json.Unmarshal(notification.Payload, payload); err != nil {
+		return err
+	}
+	envelope, err := json.Marshal(&NotificationEnvelope{
+		Type:    publisher.MATCHMAKE,
+		Payload: payload,
+	})
+	if err != nil {
+		return err
+	}
+	send <- envelope
+	return nil
+}

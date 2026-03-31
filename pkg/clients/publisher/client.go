@@ -182,5 +182,5 @@ func (c *rmqClient) SendMatchmakeNotification(
 	if err != nil {
 		return nil, err
 	}
-	return c.SendNotification(ctx, userChannel, DISCONNECT, bytes)
+	return c.SendNotification(ctx, userChannel, MATCHMAKE, bytes)
 }
