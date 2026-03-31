@@ -29,12 +29,16 @@ func main() {
 	mongoAddr := cfg.SetDefaultString("mongo_addr", "mongodb://root:root@mongo:27017", true)
 	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
 	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
+	awsAccessKey := cfg.SetDefaultString("aws_access_key", "test", true)
+	awsSecretKey := cfg.SetDefaultString("aws_secret_key", "test", true)
+	awsRegion := cfg.SetDefaultString("aws_region", "us-west-1", true)
+	awsEndpoint := cfg.SetDefaultString("aws_endpoint", "", true)
 
 	ssmClient := config.NewSSMClient(context.Background(), config.AWSConfig{
-		AccessKey: cfg.SetDefaultString("aws_access_key", "test", true),
-		SecretKey: cfg.SetDefaultString("aws_secret_key", "test", true),
-		Region:    cfg.SetDefaultString("aws_region", "us-west-1", true),
-		Endpoint:  cfg.SetDefaultString("aws_endpoint", "", true),
+		AccessKey: awsAccessKey,
+		SecretKey: awsSecretKey,
+		Region:    awsRegion,
+		Endpoint:  awsEndpoint,
 	})
 
 	k := config.NewKeys()

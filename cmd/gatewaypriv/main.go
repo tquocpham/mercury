@@ -5,14 +5,11 @@ import (
 	"fmt"
 
 	"github.com/labstack/echo/v4"
-	"github.com/mercury/cmd/subscriber/lib/handlers"
-	"github.com/mercury/cmd/subscriber/lib/session"
 	"github.com/mercury/pkg/clients/auth"
-	"github.com/mercury/pkg/clients/publisher"
+	"github.com/mercury/pkg/clients/messages"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
-	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,16 +21,14 @@ func main() {
 	}
 	port := cfg.SetDefaultString("web_port", "80", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", false)
-	redisAddr := cfg.SetDefaultString("redis_addr", "redis:6379", false)
-	redisPassword := cfg.SetDefaultString("redis_pw", "", true)
 	environment := cfg.SetDefaultString("environment", "local", false)
-	// JWT Configs
+	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	awsAccessKey := cfg.SetDefaultString("aws_access_key", "test", true)
 	awsSecretKey := cfg.SetDefaultString("aws_secret_key", "test", true)
 	awsRegion := cfg.SetDefaultString("aws_region", "us-west-1", true)
 	awsEndpoint := cfg.SetDefaultString("aws_endpoint", "", false)
-	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -43,6 +38,13 @@ func main() {
 	}
 	logger.SetLevel(level)
 
+	for k, v := range cfg.AllSettings() {
+		logger.WithFields(logrus.Fields{
+			"k": k,
+			"v": v,
+		}).Info("config")
+	}
+
 	ssmClient := config.NewSSMClient(context.Background(), config.AWSConfig{
 		AccessKey: awsAccessKey,
 		SecretKey: awsSecretKey,
@@ -51,40 +53,41 @@ func main() {
 	})
 	k := config.NewKeys()
 	if err := k.LoadPublicFromSSM(ssmClient, pubKeySSMParam); err != nil {
-		logger.Fatal(err)
+		panic(err)
 	}
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: redisPassword,
-	})
-
+	msgsClient, err := messages.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer msgsClient.Close()
 	authClient, err := auth.NewRMQClient(amqpURL)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	defer authClient.Close()
 
-	gcPubsubDispatcher := session.NewPubSubDispatcher()
-	gcPubsubDispatcher.RegisterOnSub(publisher.SUBSCRIBE, handlers.OnSubscribe)
-	gcPubsubDispatcher.RegisterOnSub(publisher.UNSUBSCRIBE, handlers.OnSubscribe)
-	gcPubsubDispatcher.RegisterOnSub(publisher.DISCONNECT, handlers.OnDisconnect)
-	gcPubsubDispatcher.RegisterOnSub(publisher.MESSAGE, handlers.OnMessage)
-	gcPubsubDispatcher.RegisterOnSub(publisher.TOAST, handlers.OnMessage)
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "gateway")
 
-	handler := handlers.NewNotifierHandlers(authClient, redisClient, gcPubsubDispatcher)
+	// hch := handlers.NewHealthCheckHandlers()
+
+	// TODO: implement ratelimiter
+	// https://pkg.go.dev/github.com/webx-top/echo/middleware/ratelimiter#RateLimiterWithConfig
 	e := echo.New()
-
-	// TODO: intergrate this with statsd. The statsd middleware currently times connection latency
-	// assuming brief http connections Websockets are long lived so we need to measure it differently.
-	// statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	// statsdClient := middleware.NewStatsdClient(statsdAddr, "websocket")
-	v1 := e.Group("api/v1",
-		middleware.UseLogger(logger, environment))
-	v1.GET("/ws", handler.NotifyClient,
-		middleware.UseAuth(k.Public))
+	hc := e.Group("api/v1/hc",
+		middleware.UseLogger(logger, environment),
+		middleware.UseStatsd(statsdClient))
+	print(hc)
+	// hc.GET("/ping", hch.Ping)
+	// v1 := e.Group("api/v1",
+	// 	middleware.UseLogger(logger, environment),
+	// 	middleware.UseStatsd(statsdClient))
+	// gsv1 := v1.Group("gs")
+	// gsv1.POST("/register", hch.Ping)
+	// gsv1.POST("/deregister", hch.Ping)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)
 	}
+
 }

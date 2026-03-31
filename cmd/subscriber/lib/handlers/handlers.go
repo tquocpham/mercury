@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/mercury/cmd/subscriber/lib/session"
 	"github.com/mercury/pkg/clients/auth"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/instrumentation"
@@ -27,14 +27,17 @@ type NotifierHandlers interface {
 }
 
 type notifierHandlers struct {
-	authClient  auth.RMQClient
-	redisClient *redis.Client
+	authClient       auth.RMQClient
+	redisClient      *redis.Client
+	pubsubDispatcher session.PubSubDispatcher
 }
 
-func NewNotifierHandlers(authClient auth.RMQClient, redisClient *redis.Client) NotifierHandlers {
+func NewNotifierHandlers(
+	authClient auth.RMQClient, redisClient *redis.Client, pubsubDispatcher session.PubSubDispatcher) NotifierHandlers {
 	return &notifierHandlers{
-		authClient:  authClient,
-		redisClient: redisClient,
+		authClient:       authClient,
+		redisClient:      redisClient,
+		pubsubDispatcher: pubsubDispatcher,
 	}
 }
 
@@ -46,6 +49,7 @@ type NotificationEnvelope struct {
 func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 	ctx := instrumentation.ToContext(c)
 	logger := middleware.GetLogger(c)
+	metrics := middleware.GetStatsd(c)
 	w := c.Response()
 	r := c.Request()
 
@@ -104,70 +108,72 @@ func (h *notifierHandlers) NotifyClient(c echo.Context) error {
 		}
 	}()
 
-	go func() {
-		for msg := range pubsub.Channel() {
-			notification := &publisher.SendNotificationRequest{}
-			if err := json.Unmarshal([]byte(msg.Payload), notification); err != nil {
-				logger.Error("failed to parse message")
-				continue
-			}
-			switch notification.Type {
-			case publisher.SUBSCRIBE:
-				payload := &publisher.SubscribePayload{}
-				if err := json.Unmarshal(notification.Payload, payload); err != nil {
-					logger.Error("failed to parse subscribe payload")
-					continue
-				}
-				// TODO: Check here to make sure that we're not already subscribed
-				channels := payload.Channels
-				if len(channels) > 0 {
-					if err := pubsub.Subscribe(r.Context(), channels...); err != nil {
-						logger.WithError(err).Error("failed to subscribe to additional channels")
-					}
-				}
-			case publisher.DISCONNECT:
-				conn.WriteControl(
-					websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session terminated"),
-					time.Now().Add(time.Second),
-				)
-				conn.Close()
-			case publisher.UNSUBSCRIBE:
-				payload := &publisher.UnsubscribePayload{}
-				if err := json.Unmarshal(notification.Payload, payload); err != nil {
-					logger.Error("failed to parse subscribe payload")
-					continue
-				}
-				// TODO: Check here to make sure that we're not already subscribed
-				channels := payload.Channels
-				if len(channels) > 0 {
-					if err := pubsub.Unsubscribe(r.Context(), channels...); err != nil {
-						logger.WithError(err).Error("failed to unsubscribe to additional channels")
-					}
-				}
-			case publisher.MESSAGE:
-				payload := &publisher.MessagePayload{}
-				if err := json.Unmarshal(notification.Payload, payload); err != nil {
-					logger.Error("failed to parse message payload")
-					continue
-				}
-				notification, err := json.Marshal(&NotificationEnvelope{
-					Type:    publisher.MESSAGE,
-					Payload: payload,
-				})
-				if err != nil {
-					logger.Error("failed to parse message payload")
-					continue
-				}
-				if err := conn.WriteMessage(websocket.TextMessage, notification); err != nil {
-					logger.WithError(err).Error("failed to send message to client")
-					return
-				}
-			case publisher.TOAST:
-				logger.Error("Not implemented")
-			}
-		}
-	}()
+	h.pubsubDispatcher.Start(r.Context(), logger, metrics, conn, pubsub)
+
+	// go func() {
+	// 	for msg := range pubsub.Channel() {
+	// 		notification := &publisher.SendNotificationRequest{}
+	// 		if err := json.Unmarshal([]byte(msg.Payload), notification); err != nil {
+	// 			logger.Error("failed to parse message")
+	// 			continue
+	// 		}
+	// 		switch notification.Type {
+	// 		case publisher.SUBSCRIBE:
+	// 			payload := &publisher.SubscribePayload{}
+	// 			if err := json.Unmarshal(notification.Payload, payload); err != nil {
+	// 				logger.Error("failed to parse subscribe payload")
+	// 				continue
+	// 			}
+	// 			// TODO: Check here to make sure that we're not already subscribed
+	// 			channels := payload.Channels
+	// 			if len(channels) > 0 {
+	// 				if err := pubsub.Subscribe(r.Context(), channels...); err != nil {
+	// 					logger.WithError(err).Error("failed to subscribe to additional channels")
+	// 				}
+	// 			}
+	// 		case publisher.DISCONNECT:
+	// 			conn.WriteControl(
+	// 				websocket.CloseMessage,
+	// 				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session terminated"),
+	// 				time.Now().Add(time.Second),
+	// 			)
+	// 			conn.Close()
+	// 		case publisher.UNSUBSCRIBE:
+	// 			payload := &publisher.UnsubscribePayload{}
+	// 			if err := json.Unmarshal(notification.Payload, payload); err != nil {
+	// 				logger.Error("failed to parse subscribe payload")
+	// 				continue
+	// 			}
+	// 			// TODO: Check here to make sure that we're not already subscribed
+	// 			channels := payload.Channels
+	// 			if len(channels) > 0 {
+	// 				if err := pubsub.Unsubscribe(r.Context(), channels...); err != nil {
+	// 					logger.WithError(err).Error("failed to unsubscribe to additional channels")
+	// 				}
+	// 			}
+	// 		case publisher.MESSAGE:
+	// 			payload := &publisher.MessagePayload{}
+	// 			if err := json.Unmarshal(notification.Payload, payload); err != nil {
+	// 				logger.Error("failed to parse message payload")
+	// 				continue
+	// 			}
+	// 			notification, err := json.Marshal(&NotificationEnvelope{
+	// 				Type:    publisher.MESSAGE,
+	// 				Payload: payload,
+	// 			})
+	// 			if err != nil {
+	// 				logger.Error("failed to parse message payload")
+	// 				continue
+	// 			}
+	// 			if err := conn.WriteMessage(websocket.TextMessage, notification); err != nil {
+	// 				logger.WithError(err).Error("failed to send message to client")
+	// 				return
+	// 			}
+	// 		case publisher.TOAST:
+	// 			logger.Error("Not implemented")
+	// 		}
+	// 	}
+	// }()
 
 	// block until disconnect
 	for {

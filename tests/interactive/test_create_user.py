@@ -11,17 +11,16 @@ import argparse
 import random
 import string
 
-
 import httpx
 
-AUTH_DEFAULT = "http://localhost:9005"
+AUTH_DEFAULT = "http://localhost:9001"
 
 SEED_USERS = [
-    {"username": "root",   "email": "root@mercury.local"},
-    {"username": "tester", "email": "tester@mercury.local"},
-    {"username": "user", "email": "user@mercury.local"},
-    {"username": "bob", "email": "bob@mercury.local"},
-    {"username": "alice", "email": "alice@mercury.local"},
+    {"username": "root",   "email": "root@mercury.local", "password": "password"},
+    {"username": "tester", "email": "tester@mercury.local", "password": "password"},
+    {"username": "user", "email": "user@mercury.local", "password": "password"},
+    {"username": "bob", "email": "bob@mercury.local", "password": "password"},
+    {"username": "alice", "email": "alice@mercury.local", "password": "password"},
 ]
 
 
@@ -68,8 +67,7 @@ def main() -> None:
         for u in SEED_USERS:
             print(f"\nSeeding '{u['username']}' ...")
             try:
-                password = u['password'] if 'password' in u else generate_random_string(
-                    8)
+                password = u['password']
                 account_id = create_account(
                     client, args.auth, u["username"], u["email"], password)
                 activate_account(client, args.auth, account_id)

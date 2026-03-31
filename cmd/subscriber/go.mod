@@ -8,6 +8,7 @@ require (
 	github.com/mercury/pkg v0.0.0-00010101000000-000000000000
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/sirupsen/logrus v1.9.4
+	github.com/smira/go-statsd v1.3.4
 )
 
 require (
@@ -29,7 +30,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
-	github.com/smira/go-statsd v1.3.4 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect

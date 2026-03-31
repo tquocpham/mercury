@@ -109,10 +109,7 @@ services:
       context: .
       dockerfile: cmd/auth/Dockerfile
     restart: always
-    ports:
-      - "9005:9005"
     environment:
-      WEB_PORT: "9005"
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
       MONGO_ADDR: mongodb://root:root@mongo:27017
@@ -152,10 +149,7 @@ services:
       context: .
       dockerfile: cmd/messages/Dockerfile
     restart: always
-    ports:
-      - "9002:9002"
     environment:
-      WEB_PORT: "9002"
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
       CASSANDRA_HOST: cassandra
@@ -217,10 +211,7 @@ services:
       context: .
       dockerfile: cmd/publisher/Dockerfile
     restart: always
-    ports:
-      - "9003"
     environment:
-      WEB_PORT: "9003"
       LOG_LEVEL: debug
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
@@ -229,4 +220,34 @@ services:
       AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - redis
+      - rabbitmq
+
+  mmservice:
+    build:
+      context: .
+      dockerfile: cmd/mmservice/Dockerfile
+    restart: always
+    environment:
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - mongo
+      - rabbitmq
+
+  mmsolver:
+    build:
+      context: .
+      dockerfile: cmd/mmsolver/Dockerfile
+    restart: always
+    environment:
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - mongo
       - rabbitmq

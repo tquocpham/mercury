@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gateway/lib/handlers"
 	"github.com/mercury/pkg/clients/auth"
+	"github.com/mercury/pkg/clients/matchmaking"
 	"github.com/mercury/pkg/clients/messages"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
@@ -21,11 +22,15 @@ func main() {
 		panic(err.Error())
 	}
 	port := cfg.SetDefaultString("web_port", "80", false)
-	logLevel := cfg.SetDefaultString("log_level", "info", true)
-	environment := cfg.SetDefaultString("environment", "local", true)
-	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", true)
+	logLevel := cfg.SetDefaultString("log_level", "info", false)
+	environment := cfg.SetDefaultString("environment", "local", false)
+	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
 	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
 	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
+	awsAccessKey := cfg.SetDefaultString("aws_access_key", "test", true)
+	awsSecretKey := cfg.SetDefaultString("aws_secret_key", "test", true)
+	awsRegion := cfg.SetDefaultString("aws_region", "us-west-1", true)
+	awsEndpoint := cfg.SetDefaultString("aws_endpoint", "", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -35,11 +40,18 @@ func main() {
 	}
 	logger.SetLevel(level)
 
+	for k, v := range cfg.AllSettings() {
+		logger.WithFields(logrus.Fields{
+			"k": k,
+			"v": v,
+		}).Info("config")
+	}
+
 	ssmClient := config.NewSSMClient(context.Background(), config.AWSConfig{
-		AccessKey: cfg.SetDefaultString("aws_access_key", "test", true),
-		SecretKey: cfg.SetDefaultString("aws_secret_key", "test", true),
-		Region:    cfg.SetDefaultString("aws_region", "us-west-1", true),
-		Endpoint:  cfg.SetDefaultString("aws_endpoint", "", false),
+		AccessKey: awsAccessKey,
+		SecretKey: awsSecretKey,
+		Region:    awsRegion,
+		Endpoint:  awsEndpoint,
 	})
 	k := config.NewKeys()
 	if err := k.LoadPublicFromSSM(ssmClient, pubKeySSMParam); err != nil {
@@ -56,11 +68,17 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer authClient.Close()
+	mmClient, err := matchmaking.NewRMQClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer mmClient.Close()
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gateway")
 
 	messagesHandler := handlers.NewMessageHandlers(msgsClient)
 	authHandlers := handlers.NewAuthHandlers(authClient)
+	mmHandlers := handlers.NewMatchmakingHandlers(mmClient)
 	hch := handlers.NewHealthCheckHandlers()
 
 	// TODO: implement ratelimiter
@@ -91,6 +109,11 @@ func main() {
 	// TODO: This link will get emailed out to the user when the email
 	// service is setup. For now it can just be chained from /account
 	v1.POST("/account/activate/:accountid", authHandlers.ActivateAccount)
+
+	v1.POST("/mm/join/party", mmHandlers.QueueParty)
+	v1.GET("/mm/join/party/:partyid", mmHandlers.QueueParty)
+	// TODO: move this to gatewaypiv.
+	v1.POST("/mm/register/gameserver", mmHandlers.RegisterGameserver)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

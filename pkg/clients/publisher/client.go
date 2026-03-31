@@ -15,6 +15,7 @@ const (
 	TOAST       NotificationName = "Toast"
 	SUBSCRIBE   NotificationName = "Subscribe"
 	UNSUBSCRIBE NotificationName = "Unsubscribe"
+	MATCHMAKE   NotificationName = "Matchmake"
 	DISCONNECT  NotificationName = "Disconnect"
 )
 
@@ -30,6 +31,8 @@ type RMQClient interface {
 		ctx context.Context, messageID, conversationID, user, message string) (*SendNotificationResponse, error)
 	Subscribe(
 		ctx context.Context, userID string, channels []string) (*SubscribeResponse, error)
+	SendMatchmakeNotification(
+		ctx context.Context, userID string, serverID, serverIP string, serverPort int) (*SendNotificationResponse, error)
 }
 
 type rmqClient struct {
@@ -158,157 +161,26 @@ func (c *rmqClient) Subscribe(
 		UserID:   userID,
 		Channels: channels,
 	})
-
 }
 
-// type Client interface {
-// 	SendNotification(
-// 		ctx context.Context, channel string, typ NotificationName, payload []byte) (*SendNotificationResponse, error)
-// 	SendSubscribeNotification(
-// 		ctx context.Context, userID string, channels []string) (*SendNotificationResponse, error)
-// 	SendUnsubscribeNotification(
-// 		ctx context.Context, userID string, channels []string) (*SendNotificationResponse, error)
-// 	SendMessageNotification(
-// 		ctx context.Context, messageID, conversationID, user, message string) (*SendNotificationResponse, error)
-// 	Subscribe(
-// 		ctx context.Context, userID string, channels []string) (*SubscribeResponse, error)
-// }
+type MatchmakePayload struct {
+	ServerID   string `json:"server_id"`
+	ServerIP   string `json:"server_ip"`
+	ServerPort int    `json:"server_port"`
+}
 
-// type publisherClient struct {
-// 	host       string
-// 	httpClient *http.Client
-// }
+func (c *rmqClient) SendMatchmakeNotification(
+	ctx context.Context, userID string, serverID, serverIP string, serverPort int) (*SendNotificationResponse, error) {
 
-// // NewClient creates a new publisher client
-// func NewClient(host string, httpClient *http.Client) Client {
-// 	return &publisherClient{
-// 		host:       host,
-// 		httpClient: httpClient,
-// 	}
-// }
-
-// func (c *publisherClient) SendNotification(
-// 	ctx context.Context,
-// 	channel string,
-// 	typ NotificationName,
-// 	payload []byte,
-// ) (*SendNotificationResponse, error) {
-
-// 	referenceID := uuid.New().String()
-
-// 	bts, err := json.Marshal(&SendNotificationRequest{
-// 		Channel:     channel,
-// 		Type:        typ,
-// 		Payload:     payload,
-// 		ReferenceID: referenceID,
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	u := fmt.Sprintf("%s/api/v1/send", c.host)
-// 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewBuffer(bts))
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	req.Header.Set("Content-Type", "application/json")
-
-// 	response, err := c.httpClient.Do(req)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer response.Body.Close()
-// 	if response.StatusCode != http.StatusOK {
-// 		return nil, fmt.Errorf("publisher sendnotification: unexpected status %d", response.StatusCode)
-// 	}
-
-// 	r := &SendNotificationResponse{}
-// 	if err := json.NewDecoder(response.Body).Decode(r); err != nil {
-// 		return nil, err
-// 	}
-// 	return r, nil
-// }
-
-// func (c *publisherClient) SendSubscribeNotification(
-// 	ctx context.Context, userID string, channels []string) (*SendNotificationResponse, error) {
-// 	userChannel := UserChannel(userID)
-// 	bytes, err := json.Marshal(SubscribePayload{
-// 		Channels: channels,
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return c.SendNotification(ctx, userChannel, SUBSCRIBE, bytes)
-// }
-
-// func (c *publisherClient) SendUnsubscribeNotification(
-// 	ctx context.Context, userID string, channels []string) (*SendNotificationResponse, error) {
-// 	userChannel := UserChannel(userID)
-// 	bytes, err := json.Marshal(UnsubscribePayload{
-// 		Channels: channels,
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return c.SendNotification(ctx, userChannel, UNSUBSCRIBE, bytes)
-// }
-
-// func (c *publisherClient) SendDisconnectNotification(
-// 	ctx context.Context, userID string, channels []string) (*SendNotificationResponse, error) {
-// 	userChannel := UserChannel(userID)
-// 	bytes, err := json.Marshal(DisconnectPayload{})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return c.SendNotification(ctx, userChannel, DISCONNECT, bytes)
-// }
-
-// func (c *publisherClient) SendMessageNotification(
-// 	ctx context.Context, messageID, conversationID string,
-// 	user, message string,
-// ) (*SendNotificationResponse, error) {
-
-// 	bytes, err := json.Marshal(MessagePayload{
-// 		MessageID:      messageID,
-// 		ConversationID: conversationID,
-// 		User:           user,
-// 		Message:        message,
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return c.SendNotification(ctx, MessageChannel(conversationID), MESSAGE, bytes)
-// }
-
-// func (c *publisherClient) Subscribe(
-// 	ctx context.Context, userID string, channels []string) (*SubscribeResponse, error) {
-// 	bts, err := json.Marshal(&SubscribeRequest{
-// 		UserID:   userID,
-// 		Channels: channels,
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	u := fmt.Sprintf("%s/api/v1/subscribe", c.host)
-// 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewBuffer(bts))
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	req.Header.Set("Content-Type", "application/json")
-
-// 	response, err := c.httpClient.Do(req)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer response.Body.Close()
-// 	if response.StatusCode != http.StatusOK {
-// 		return nil, fmt.Errorf("publisher subscribe unexpected status %d", response.StatusCode)
-// 	}
-
-// 	r := &SubscribeResponse{}
-// 	if err := json.NewDecoder(response.Body).Decode(r); err != nil {
-// 		return nil, err
-// 	}
-// 	return r, nil
-
-// }
+	userChannel := UserChannel(userID)
+	payload := MatchmakePayload{
+		ServerID:   serverID,
+		ServerIP:   serverIP,
+		ServerPort: serverPort,
+	}
+	bytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return c.SendNotification(ctx, userChannel, DISCONNECT, bytes)
+}
