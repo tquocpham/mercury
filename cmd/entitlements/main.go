@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/entitlements/lib/handlers"
 	"github.com/mercury/cmd/entitlements/lib/managers"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
-	"github.com/mercury/pkg/server"
+	"github.com/mercury/pkg/rmq"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,10 +20,9 @@ func main() {
 	}
 
 	// basic service configs
-	port := cfg.SetDefaultString("web_port", "80", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", true)
-	environment := cfg.SetDefaultString("environment", "container", true)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	// jwt configs
 	pubKeySSMParam := cfg.SetDefaultString("pub_key_ssm_param", "/mercury/jwt-public-key", false)
 	awsAccessKey := cfg.SetDefaultString("aws_access_key", "test", true)
@@ -53,7 +50,7 @@ func main() {
 	if err := k.LoadPublicFromSSM(ssmClient, pubKeySSMParam); err != nil {
 		logger.Fatal(err)
 	}
-	catalogManager, err := managers.NewentitlementsManager(mongoAddr)
+	catalogManager, err := managers.NewCatalogManager(mongoAddr)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -64,22 +61,40 @@ func main() {
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "auth")
 
-	e := echo.New()
-	e.Use(middleware.UseLogger(logger, environment))
-	e.Use(middleware.UseStatsd(statsdClient))
-	h := handlers.NewEntitlementHandlers(grantsManager, catalogManager)
-
-	// hcRoutes := e.Group("api/v1")
-	// hcRoutes.GET("/ping", hch.Ping)
-	v1 := e.Group("api/v1",
-		// only admins can modify entitlements.
-		// This api is only supposed to be used by admin and other services.
-		middleware.UseAuth(k.Public, middleware.EnforceRoles("admin")))
-	v1.GET("/check", h.Check)
-	v1.GET("/grant", h.Grant)
-	v1.GET("/revoke", h.Revoke)
-
-	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
-		logger.Fatal(err)
+	consumer, err := rmq.NewConsumer(amqpURL, logger)
+	if err != nil {
+		logrus.Fatal(err)
 	}
+	defer consumer.Close()
+	grantHandlers := handlers.NewGrantHandlers(grantsManager, catalogManager)
+	catalogHandlers := handlers.NewCatalogHandlers(catalogManager)
+	consumer.Consume("ent.v1.check", grantHandlers.Check,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("ent.v1.grant", grantHandlers.Grant,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("ent.v1.revoke", grantHandlers.Revoke,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("cat.v1.additems", catalogHandlers.AddItems,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("cat.v1.additems", catalogHandlers.AddItems,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("cat.v1.updateitems", catalogHandlers.UpdateItems,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("cat.v1.archiveitems", catalogHandlers.ArchiveItems,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Wait()
 }

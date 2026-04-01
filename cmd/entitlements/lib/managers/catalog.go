@@ -16,15 +16,17 @@ import (
 var ErrDuplicateEntitlement = errors.New("entitlementid already created")
 var ErrEntitlementNotFound = errors.New("entitlement not found")
 
-type EntitlementsManager interface {
-	GetEntitlement(ctx context.Context, entitlementID string) (_ *Entitlement, err error)
+type CatalogManager interface {
+	GetEntitlement(ctx context.Context, entitlementID string, version int) (_ *Entitlement, err error)
+	CreateEntitlement(
+		ctx context.Context, name, description, category string, price int, currency string, metadata map[string]any) (_ *Entitlement, err error)
 }
 
-type entitlementsManager struct {
+type catalogManager struct {
 	col *mongo.Collection
 }
 
-func NewentitlementsManager(mongoAddr string) (EntitlementsManager, error) {
+func NewCatalogManager(mongoAddr string) (CatalogManager, error) {
 	client, err := mongo.Connect(options.Client().ApplyURI(mongoAddr))
 	if err != nil {
 		return nil, err
@@ -33,23 +35,29 @@ func NewentitlementsManager(mongoAddr string) (EntitlementsManager, error) {
 	// The pool is created once at startup, reused across all requests
 	col := client.Database("entitlements").Collection("catalog")
 
-	return &entitlementsManager{
+	return &catalogManager{
 		col: col,
 	}, nil
 }
 
-type Entitlement struct {
-	EntitlementID string                 `bson:"_id"`
-	CommitID      string                 `bson:"commit_id"` // idempotency for updates
-	Feature       string                 `bson:"feature"`
-	Description   string                 `bson:"description"`
-	ExpiresAt     time.Time              `bson:"expires_at,omitempty"`
-	Metadata      map[string]interface{} `bson:"metadata,omitempty"`
+type EntitlementPrice struct {
+	Amount   int    `bson:"amount"`
+	Currency string `bson:"currency"`
 }
 
-func (u *entitlementsManager) CreateEntitlement(
-	ctx context.Context, id, feature, description string, expiresAt time.Time,
-	metadata map[string]any) (_ *Entitlement, err error) {
+type Entitlement struct {
+	EntitlementID string           `bson:"_id"`
+	Version       int              `bson:"version"`
+	Name          string           `bson:"name"`
+	Description   string           `bson:"description"`
+	Category      string           `bson:"category"`
+	Price         EntitlementPrice `bson:"price"`
+	Unique        bool             `bson:"unique"`
+	Metadata      map[string]any   `bson:"metadata,omitempty"`
+}
+
+func (u *catalogManager) CreateEntitlement(
+	ctx context.Context, name, description, category string, price int, currency string, metadata map[string]any) (_ *Entitlement, err error) {
 
 	t := instrumentation.NewMetricsTimer(ctx, "entmgr.dur", statsd.StringTag("op", "create_entitlement"))
 	defer func() { t.Done(err) }()
@@ -58,10 +66,16 @@ func (u *entitlementsManager) CreateEntitlement(
 	defer cancel()
 
 	entitlement := &Entitlement{
-		EntitlementID: id,
-		CommitID:      uuid.New().String(),
-		Feature:       feature,
+		EntitlementID: uuid.New().String(),
+		Version:       1,
+		Name:          name,
 		Description:   description,
+		Category:      category,
+		Metadata:      metadata,
+		Price: EntitlementPrice{
+			Amount:   price,
+			Currency: currency,
+		},
 	}
 
 	_, err = u.col.InsertOne(ctx, entitlement)
@@ -75,7 +89,7 @@ func (u *entitlementsManager) CreateEntitlement(
 	return entitlement, nil
 }
 
-func (u *entitlementsManager) GetEntitlement(ctx context.Context, entitlementID string) (_ *Entitlement, err error) {
+func (u *catalogManager) GetEntitlement(ctx context.Context, entitlementID string, version int) (_ *Entitlement, err error) {
 
 	t := instrumentation.NewMetricsTimer(ctx, "entmgr.dur", statsd.StringTag("op", "get_entitlement"))
 	defer func() { t.Done(err) }()
@@ -84,11 +98,8 @@ func (u *entitlementsManager) GetEntitlement(ctx context.Context, entitlementID 
 	defer cancel()
 
 	filter := bson.M{
-		"_id": entitlementID,
-		"$or": bson.A{
-			bson.M{"expires_at": bson.M{"$exists": false}},
-			bson.M{"expires_at": bson.M{"$gt": time.Now()}},
-		},
+		"_id":     entitlementID,
+		"version": version,
 	}
 
 	doc := &Entitlement{}
