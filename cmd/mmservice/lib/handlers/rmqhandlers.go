@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/mercury/cmd/mmservice/lib/managers"
 	"github.com/mercury/pkg/clients/matchmaking"
 	"github.com/mercury/pkg/clients/messages"
-	"github.com/mercury/pkg/matchmaking/managers"
 	"github.com/mercury/pkg/rmq"
 )
 
@@ -105,7 +105,7 @@ func (h *rmqHanders) GameserverUnregister(ctx context.Context, body []byte) ([]b
 		logger.WithError(err).Error("Failed to parse gameserver unregister request")
 		return nil, matchmaking.ErrInvalidRequest
 	}
-	err := h.mmManager.UpdateServerState(ctx, request.ServerID, request.Version, managers.Draining)
+	err := h.mmManager.UpdateServerState(ctx, request.ServerID, request.Version, matchmaking.Draining)
 	if err != nil {
 		logger.WithError(err).Error("Failed to unregister game server")
 		return nil, matchmaking.ErrFailedToRegisterGameserver

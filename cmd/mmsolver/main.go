@@ -1,10 +1,10 @@
 package main
 
 import (
+	"github.com/mercury/cmd/mmsolver/lib/managers"
 	"github.com/mercury/cmd/mmsolver/lib/solver"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/config"
-	"github.com/mercury/pkg/matchmaking/managers"
 	"github.com/mercury/pkg/middleware"
 	"github.com/sirupsen/logrus"
 )
