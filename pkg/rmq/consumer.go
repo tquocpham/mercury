@@ -2,6 +2,8 @@ package rmq
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -82,7 +84,17 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 				response, err := h(ctx, msg.Body)
 				cancel()
 				if err != nil {
-					c.logger.WithError(err).Error("mq: handler error, nacking")
+					c.logger.WithError(err).Error("mq: handler error")
+					if msg.ReplyTo != "" {
+						ce := &CodedError{Message: err.Error()}
+						errors.As(err, &ce)
+						errBody, _ := json.Marshal(ce)
+						ch.Publish("", msg.ReplyTo, false, false, amqp.Publishing{
+							ContentType:   "application/json",
+							CorrelationId: msg.CorrelationId,
+							Body:          errBody,
+						})
+					}
 					msg.Nack(false, !msg.Redelivered)
 					continue
 				}

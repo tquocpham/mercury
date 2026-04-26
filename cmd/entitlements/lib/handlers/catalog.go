@@ -27,12 +27,24 @@ func NewCatalogHandlers(catalogManager managers.CatalogManager) CatalogHandlers 
 
 // AddItem adds an item to the catalog
 func (h *catalogHandlers) AddItems(ctx context.Context, body []byte) ([]byte, error) {
-	request := &entitlements.CreateEntitlementRequest{}
+	request := &entitlements.CreateItemRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
 		return nil, entitlements.ErrInvalidRequest
 	}
-	h.catalogManager.CreateEntitlement(ctx, request.Name, request.Description, request.Category, request.Price.Amount, request.Price.Currency, request.Metadata)
-	return nil, nil
+	entitlement, err := h.catalogManager.CreateEntitlement(
+		ctx, request.Name, request.Description, request.Category, request.Price.Amount,
+		request.Price.Currency, request.Unique, request.Metadata)
+	if err != nil {
+		return nil, entitlements.ErrFailedToCreateEntitlement
+	}
+	bts, err := json.Marshal(entitlements.CreateItemResponse{
+		Version:       entitlement.Version,
+		EntitlementID: entitlement.EntitlementID,
+	})
+	if err != nil {
+		return nil, entitlements.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 // AddItem adds an item to the catalog

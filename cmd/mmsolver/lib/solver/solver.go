@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mercury/cmd/mmsolver/lib/managers"
+	"github.com/mercury/pkg/clients/matchmaking"
 	"github.com/mercury/pkg/clients/publisher"
-	"github.com/mercury/pkg/matchmaking/managers"
 	"github.com/sirupsen/logrus"
 	"github.com/smira/go-statsd"
 )
@@ -96,14 +97,14 @@ func (s *mmSolver) solve(logger *logrus.Entry, ctx context.Context) (bool, error
 	}
 
 	// build a lookup map for server info (needed for notifications)
-	serverByID := make(map[string]*managers.GameserverInfo, len(gameservers))
+	serverByID := make(map[string]*matchmaking.GameserverInfo, len(gameservers))
 	for _, gs := range gameservers {
 		serverByID[gs.ServerID] = gs
 	}
 
 	// assigns players to servers
 	toNotify := []playerNotification{}
-	matchedParties := map[string]*managers.PartyInfo{}
+	matchedParties := map[string]*matchmaking.PartyInfo{}
 	for _, gs := range gameservers {
 		if ctx.Err() != nil {
 			break
@@ -140,7 +141,7 @@ func (s *mmSolver) solve(logger *logrus.Entry, ctx context.Context) (bool, error
 	}
 
 	// collect matched parties for write
-	updatedParties := make([]*managers.PartyInfo, 0, len(matchedParties))
+	updatedParties := make([]*matchmaking.PartyInfo, 0, len(matchedParties))
 	for _, party := range matchedParties {
 		updatedParties = append(updatedParties, party)
 	}

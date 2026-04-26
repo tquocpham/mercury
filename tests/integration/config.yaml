@@ -1,0 +1,4 @@
+gateway_url: "http://localhost:9001"
+gatewaypriv_url: "http://localhost:9002"
+subscriber_url: "http://localhost:9004"
+mongo_url: "mongodb://root:root@localhost:27017"

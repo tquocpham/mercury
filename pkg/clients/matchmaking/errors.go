@@ -1,11 +1,9 @@
 package matchmaking
 
-import (
-	"errors"
-)
+import "github.com/mercury/pkg/rmq"
 
 var (
-	ErrInvalidRequest             = errors.New("failed to read request")
-	ErrFailedToQueueParty         = errors.New("failed to queue party")
-	ErrFailedToRegisterGameserver = errors.New("failed to register gameserver")
+	ErrInvalidRequest             = rmq.NewError(3001, "failed to read request")
+	ErrFailedToQueueParty         = rmq.NewError(3002, "failed to queue party")
+	ErrFailedToRegisterGameserver = rmq.NewError(3003, "failed to register gameserver")
 )

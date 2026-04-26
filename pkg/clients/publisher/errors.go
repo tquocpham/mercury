@@ -1,8 +1,9 @@
 package publisher
 
-import "errors"
+import "github.com/mercury/pkg/rmq"
 
 var (
-	ErrInvalidRequest      = errors.New("failed to read request")
-	ErrFailedToSaveChannel = errors.New("failed to save channel")
+	ErrInvalidRequest         = rmq.NewError(4001, "failed to read request")
+	ErrFailedToCreateResponse = rmq.NewError(4002, "failed to create response")
+	ErrFailedToSaveChannel    = rmq.NewError(4003, "failed to save channel")
 )

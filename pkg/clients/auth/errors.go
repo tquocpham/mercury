@@ -5,20 +5,22 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/mercury/pkg/rmq"
 )
 
 var (
-	ErrInvalidRequest          = errors.New("failed to read request")
-	ErrUnauthorized            = errors.New("unauthorized")
-	ErrFailedToQueryAccount    = errors.New("failed to query account")
-	ErrSessionCreationFailed   = errors.New("session failed to create")
-	ErrTokenSignatureFailed    = errors.New("failed to create signed token")
-	ErrAccountDuplicate        = errors.New("username or email already taken")
-	ErrAccountCreationFailed   = errors.New("failed to create account")
-	ErrAccountActivationFailed = errors.New("failed to activate account")
-	ErrNoSessionFound          = errors.New("failed to find session")
-	ErrSessionExtensionFailed  = errors.New("failed to extend session")
-	ErrSessionDeletionFailed   = errors.New("failed to delete session")
+	ErrInvalidRequest          = rmq.NewError(1001, "failed to read request")
+	ErrFailedToCreateResponse  = rmq.NewError(1002, "failed to create response")
+	ErrUnauthorized            = rmq.NewError(1003, "unauthorized")
+	ErrFailedToQueryAccount    = rmq.NewError(1004, "failed to query account")
+	ErrSessionCreationFailed   = rmq.NewError(1005, "session failed to create")
+	ErrTokenSignatureFailed    = rmq.NewError(1006, "failed to create signed token")
+	ErrAccountDuplicate        = rmq.NewError(1007, "username or email already taken")
+	ErrAccountCreationFailed   = rmq.NewError(1008, "failed to create account")
+	ErrAccountActivationFailed = rmq.NewError(1009, "failed to activate account")
+	ErrNoSessionFound          = rmq.NewError(1010, "failed to find session")
+	ErrSessionExtensionFailed  = rmq.NewError(1011, "failed to extend session")
+	ErrSessionDeletionFailed   = rmq.NewError(1012, "failed to delete session")
 )
 
 func ConvertHttpError(err error) error {
@@ -29,15 +31,6 @@ func ConvertHttpError(err error) error {
 		return echo.ErrUnauthorized
 	case errors.Is(err, ErrAccountDuplicate):
 		return echo.NewHTTPError(http.StatusConflict)
-	case errors.Is(err, ErrAccountCreationFailed),
-		errors.Is(err, ErrFailedToQueryAccount),
-		errors.Is(err, ErrSessionCreationFailed),
-		errors.Is(err, ErrTokenSignatureFailed),
-		errors.Is(err, ErrNoSessionFound),
-		errors.Is(err, ErrSessionExtensionFailed),
-		errors.Is(err, ErrSessionDeletionFailed),
-		errors.Is(err, ErrAccountActivationFailed):
-		return echo.ErrInternalServerError
 	default:
 		return echo.ErrInternalServerError
 	}

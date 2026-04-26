@@ -47,7 +47,9 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		return nil, entitlements.ErrFailedToGetEntitlement
 	}
 
-	grant, err := h.grantsManager.Grant(ctx, request.AccountID, entitlement.EntitlementID, entitlement.Version, entitlement.Unique)
+	grant, err := h.grantsManager.Grant(
+		ctx, request.AccountID, entitlement.EntitlementID, entitlement.Version,
+		entitlement.Unique)
 	if err != nil {
 		if errors.Is(err, managers.ErrDuplicateGrant) {
 			return nil, entitlements.ErrDuplicateGrant
@@ -55,7 +57,7 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		return nil, entitlements.ErrFailedToGrantEntitlement
 	}
 
-	return json.Marshal(entitlements.GrantResponse{
+	resp, err := json.Marshal(entitlements.GrantResponse{
 		ID:            grant.ID,
 		EntitlementID: grant.EntitlementID,
 		CommitID:      grant.CommitID,
@@ -67,6 +69,10 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		ExpiresAt:     grant.ExpiresAt,
 		Metadata:      grant.Metadata,
 	})
+	if err != nil {
+		return nil, entitlements.ErrFailedToCreateResponse
+	}
+	return resp, nil
 }
 
 func (h *grantHandlers) Revoke(ctx context.Context, body []byte) ([]byte, error) {

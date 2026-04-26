@@ -1,4 +1,4 @@
-SERVICES := gateway gatewaypriv subscriber publisher messages worker auth mmservice mmsolver
+SERVICES := auth entitlements gateway gatewaypriv messages mmservice mmsolver publisher subscriber worker 
 BIN_DIR  := bin
 MODULES  := pkg $(addprefix cmd/,$(SERVICES))
 
