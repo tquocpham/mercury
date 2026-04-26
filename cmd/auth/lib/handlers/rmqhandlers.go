@@ -97,9 +97,13 @@ func (h *rmqHanders) Login(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, auth.ErrTokenSignatureFailed
 	}
-	return json.Marshal(auth.TokenResponse{
+	bts, err := json.Marshal(auth.TokenResponse{
 		Token: signedToken,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) Refresh(ctx context.Context, body []byte) ([]byte, error) {
@@ -124,9 +128,13 @@ func (h *rmqHanders) Refresh(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, auth.ErrTokenSignatureFailed
 	}
-	return json.Marshal(auth.RefreshResponse{
+	bts, err := json.Marshal(auth.RefreshResponse{
 		Token: signedToken,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) Revoke(ctx context.Context, body []byte) ([]byte, error) {
@@ -155,9 +163,13 @@ func (h *rmqHanders) CreateAccount(ctx context.Context, body []byte) ([]byte, er
 			"accountID": account.ID,
 		}).
 		Info("account created")
-	return json.Marshal(auth.AccountCreationResponse{
+	bts, err := json.Marshal(auth.AccountCreationResponse{
 		AccountID: account.ID,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 func (h *rmqHanders) ActivateAccount(ctx context.Context, body []byte) ([]byte, error) {
 	request := &auth.ActivateAccountRequest{}
@@ -168,9 +180,13 @@ func (h *rmqHanders) ActivateAccount(ctx context.Context, body []byte) ([]byte, 
 	if err := h.accountsManager.ActivateAccount(ctx, accountID); err != nil {
 		return nil, auth.ErrAccountActivationFailed
 	}
-	return json.Marshal(auth.ActivateAccountResponse{
+	bts, err := json.Marshal(auth.ActivateAccountResponse{
 		AccountID: accountID,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) GetSession(ctx context.Context, body []byte) ([]byte, error) {
@@ -183,12 +199,16 @@ func (h *rmqHanders) GetSession(ctx context.Context, body []byte) ([]byte, error
 	if err != nil {
 		return nil, auth.ErrNoSessionFound
 	}
-	return json.Marshal(auth.SessionResponse{
+	bts, err := json.Marshal(auth.SessionResponse{
 		SessionID: session.SessionID,
 		UserID:    session.UserID,
 		Username:  session.Username,
 		Roles:     session.Roles,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) RefreshSession(ctx context.Context, body []byte) ([]byte, error) {
@@ -204,12 +224,16 @@ func (h *rmqHanders) RefreshSession(ctx context.Context, body []byte) ([]byte, e
 	if err != nil {
 		return nil, auth.ErrNoSessionFound
 	}
-	return json.Marshal(auth.SessionResponse{
+	bts, err := json.Marshal(auth.SessionResponse{
 		SessionID: session.SessionID,
 		UserID:    session.UserID,
 		Username:  session.Username,
 		Roles:     session.Roles,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) DeleteSession(ctx context.Context, body []byte) ([]byte, error) {
@@ -221,7 +245,11 @@ func (h *rmqHanders) DeleteSession(ctx context.Context, body []byte) ([]byte, er
 	if err := h.sessionsManager.Delete(ctx, sessionID); err != nil {
 		return nil, auth.ErrSessionDeletionFailed
 	}
-	return json.Marshal(auth.DeleteSessionResponse{
+	bts, err := json.Marshal(auth.DeleteSessionResponse{
 		SessionID: sessionID,
 	})
+	if err != nil {
+		return nil, auth.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }

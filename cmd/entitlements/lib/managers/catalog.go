@@ -19,7 +19,8 @@ var ErrEntitlementNotFound = errors.New("entitlement not found")
 type CatalogManager interface {
 	GetEntitlement(ctx context.Context, entitlementID string, version int) (_ *Entitlement, err error)
 	CreateEntitlement(
-		ctx context.Context, name, description, category string, price int, currency string, metadata map[string]any) (_ *Entitlement, err error)
+		ctx context.Context, name, description, category string, price int, currency string,
+		unique bool, metadata map[string]any) (_ *Entitlement, err error)
 }
 
 type catalogManager struct {
@@ -57,7 +58,8 @@ type Entitlement struct {
 }
 
 func (u *catalogManager) CreateEntitlement(
-	ctx context.Context, name, description, category string, price int, currency string, metadata map[string]any) (_ *Entitlement, err error) {
+	ctx context.Context, name, description, category string, price int, currency string,
+	unique bool, metadata map[string]any) (_ *Entitlement, err error) {
 
 	t := instrumentation.NewMetricsTimer(ctx, "entmgr.dur", statsd.StringTag("op", "create_entitlement"))
 	defer func() { t.Done(err) }()
@@ -72,6 +74,7 @@ func (u *catalogManager) CreateEntitlement(
 		Description:   description,
 		Category:      category,
 		Metadata:      metadata,
+		Unique:        unique,
 		Price: EntitlementPrice{
 			Amount:   price,
 			Currency: currency,

@@ -79,6 +79,8 @@ type GSRegisterRequest struct {
 	IPAddress string `json:"ip_address"`
 	Port      int    `json:"port"`
 	Capacity  int    `json:"capacity"`
+	GameID    string `json:"game_id"`   // when supporting multiple games
+	GameMode  string `json:"game_mode"` // when supporting multiple games
 }
 
 type GSRegisterResponse struct {

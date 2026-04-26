@@ -1,6 +1,32 @@
 package entitlements
 
-import "time"
+import (
+	"context"
+	"time"
+
+	"github.com/mercury/pkg/rmq"
+)
+
+type RMQClient interface {
+	CreateItem(
+		ctx context.Context, name string, description string, category string, cost int,
+		currency string, unique bool, metadata map[string]any) (*CreateItemResponse, error)
+}
+
+type client struct {
+	Publisher *rmq.Publisher
+}
+
+// NewClient creates a new query client
+func NewClient(amqpURL string) (RMQClient, error) {
+	publisher, err := rmq.NewPublisher(amqpURL)
+	if err != nil {
+		return nil, err
+	}
+	return &client{
+		Publisher: publisher,
+	}, nil
+}
 
 type GrantRequest struct {
 	AccountID     string    `json:"account_id"`
@@ -16,7 +42,7 @@ type EntitlementPrice struct {
 	Currency string `json:"currency"`
 }
 
-type CreateEntitlementRequest struct {
+type CreateItemRequest struct {
 	// Description is the description of the entitlement.
 	Description string `json:"description"`
 	// Name is the entitlement name
@@ -26,8 +52,32 @@ type CreateEntitlementRequest struct {
 	// and providing a user-friendly shopping experience
 	Category string `json:"type"`
 	// Price is contains the price data
-	Price    EntitlementPrice       `json:"price"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Price EntitlementPrice `json:"price"`
+	// Unique is whether an account can own more than one
+	Unique   bool           `json:"unique"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+type CreateItemResponse struct {
+	EntitlementID string `json:"entitlement_id"`
+	Version       int    `json:"version"`
+}
+
+func (c *client) CreateItem(
+	ctx context.Context, name string, description string, category string, cost int,
+	currency string, unique bool, metadata map[string]any) (*CreateItemResponse, error) {
+
+	return rmq.Request[CreateItemRequest, CreateItemResponse](ctx, c.Publisher, "cat.v1.additems", CreateItemRequest{
+		Name:        name,
+		Description: description,
+		Category:    category,
+		Price: EntitlementPrice{
+			Amount:   cost,
+			Currency: currency,
+		},
+		Unique:   unique,
+		Metadata: metadata,
+	})
 }
 
 type GrantResponse struct {

@@ -84,10 +84,6 @@ func main() {
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)
-	consumer.Consume("cat.v1.additems", catalogHandlers.AddItems,
-		rmq.UseLogger(logger),
-		rmq.UseStatsd(statsdClient),
-	)
 	consumer.Consume("cat.v1.updateitems", catalogHandlers.UpdateItems,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),

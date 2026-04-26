@@ -39,9 +39,13 @@ func (h *rmqHanders) SendNotification(ctx context.Context, body []byte) ([]byte,
 		return nil, publisher.ErrInvalidRequest
 	}
 	notified := h.redisClient.Publish(ctx, request.Channel, bts)
-	return json.Marshal(publisher.SendNotificationResponse{
+	resp, err := json.Marshal(publisher.SendNotificationResponse{
 		Notified: notified.Val(),
 	})
+	if err != nil {
+		return nil, publisher.ErrFailedToCreateResponse
+	}
+	return resp, nil
 }
 
 func (h *rmqHanders) Subscribe(ctx context.Context, body []byte) ([]byte, error) {
@@ -75,7 +79,11 @@ func (h *rmqHanders) Subscribe(ctx context.Context, body []byte) ([]byte, error)
 	})
 	if err != nil {
 		logger.WithError(err).Info("failed to marshal payload")
-		return json.Marshal(response)
+		resp, err := json.Marshal(response)
+		if err != nil {
+			return nil, publisher.ErrFailedToCreateResponse
+		}
+		return resp, nil
 	}
 	referenceID := uuid.New().String()
 	bts, err := json.Marshal(&publisher.SendNotificationRequest{
@@ -89,5 +97,9 @@ func (h *rmqHanders) Subscribe(ctx context.Context, body []byte) ([]byte, error)
 		return json.Marshal(response)
 	}
 	h.redisClient.Publish(ctx, userChannel, bts)
-	return json.Marshal(response)
+	resp, err := json.Marshal(response)
+	if err != nil {
+		return nil, publisher.ErrFailedToCreateResponse
+	}
+	return resp, nil
 }

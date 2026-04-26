@@ -5,14 +5,16 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/mercury/pkg/rmq"
 )
 
 var (
-	ErrInvalidRequest      = errors.New("failed to read request")
-	ErrFailedToSendMessage = errors.New("failed to send message")
-	ErrInvalidNextToken    = errors.New("invalid next token")
-	ErrFailedToGetMessages = errors.New("failed to get messages")
-	ErrTooManyMessages     = errors.New("too many messages")
+	ErrInvalidRequest         = rmq.NewError(2001, "failed to read request")
+	ErrFailedToCreateResponse = rmq.NewError(2002, "failed to create response")
+	ErrFailedToSendMessage    = rmq.NewError(2003, "failed to send message")
+	ErrInvalidNextToken       = rmq.NewError(2004, "invalid next token")
+	ErrFailedToGetMessages    = rmq.NewError(2005, "failed to get messages")
+	ErrTooManyMessages        = rmq.NewError(2006, "too many messages")
 )
 
 func ConvertHttpError(err error) error {
@@ -22,9 +24,6 @@ func ConvertHttpError(err error) error {
 		return echo.ErrBadRequest
 	case errors.Is(err, ErrTooManyMessages):
 		return echo.NewHTTPError(http.StatusTooManyRequests)
-	case errors.Is(err, ErrFailedToGetMessages),
-		errors.Is(err, ErrFailedToSendMessage):
-		return echo.ErrInternalServerError
 	default:
 		return echo.ErrInternalServerError
 	}
