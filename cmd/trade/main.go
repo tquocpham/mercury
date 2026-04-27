@@ -1,10 +1,9 @@
 package main
 
 import (
-	"github.com/mercury/cmd/mmservice/lib/handlers"
-	"github.com/mercury/pkg/clients/publisher"
+	"github.com/mercury/cmd/trade/lib/handlers"
+	"github.com/mercury/cmd/trade/lib/managers"
 	"github.com/mercury/pkg/config"
-	"github.com/mercury/pkg/matchmaking/managers"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/rmq"
 	"github.com/sirupsen/logrus"
@@ -29,43 +28,24 @@ func main() {
 	}
 	logger.SetLevel(level)
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "mmservice")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "trade")
 
-	publisherClient, err := publisher.NewRMQClient(amqpURL)
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	defer publisherClient.Close()
-
-	mmManager, err := managers.NewAMatchmakingManager(mongoAddr)
+	outboxManager, err := managers.NewOutboxManager(mongoAddr, statsdClient)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 
-	rmqHandlers := handlers.NewRMQHandlers(mmManager)
-
+	rmqHandlers := handlers.NewRMQHandlers(outboxManager)
 	consumer, err := rmq.NewConsumer(amqpURL, logger)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	defer consumer.Close()
-	consumer.Consume("mm.v1.clientregister", rmqHandlers.UserJoinQueue,
+	consumer.Consume("trade.v1.trade", rmqHandlers.Trade,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)
-	consumer.Consume("mm.v1.getqueue", rmqHandlers.GetQueue,
-		rmq.UseLogger(logger),
-		rmq.UseStatsd(statsdClient),
-	)
-	consumer.Consume("mm.v1.clientunregister", rmqHandlers.UserJoinDequeue,
-		rmq.UseLogger(logger),
-		rmq.UseStatsd(statsdClient),
-	)
-	consumer.Consume("mm.v1.gsregister", rmqHandlers.GameserverRegister,
-		rmq.UseLogger(logger),
-		rmq.UseStatsd(statsdClient),
-	)
-	consumer.Consume("mm.v1.gsunregister", rmqHandlers.GameserverUnregister,
+	consumer.Consume("trade.v1.status", rmqHandlers.TradeStatus,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)
