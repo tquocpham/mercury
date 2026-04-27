@@ -7,16 +7,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mercury/pkg/clients/publisher"
+	"github.com/mercury/pkg/instrumentation"
 	"github.com/mercury/pkg/matchmaking/managers"
 	"github.com/sirupsen/logrus"
 	"github.com/smira/go-statsd"
 )
 
 type MMSolver interface {
-	Solve(logger *logrus.Logger)
+	Solve(ctx context.Context, logger *logrus.Logger)
 }
 
 type mmSolver struct {
+	interval        time.Duration
 	publisherClient publisher.RMQClient
 	statsdClient    *statsd.Client
 	maxSolveTime    time.Duration
@@ -24,10 +26,12 @@ type mmSolver struct {
 }
 
 func NewMMSolver(
+	interval time.Duration,
 	publisherClient publisher.RMQClient,
 	mmManager managers.MatchmakingManager,
 	statsdClient *statsd.Client) MMSolver {
 	return &mmSolver{
+		interval:        interval,
 		publisherClient: publisherClient,
 		statsdClient:    statsdClient,
 		maxSolveTime:    10 * time.Minute,
@@ -35,21 +39,29 @@ func NewMMSolver(
 	}
 }
 
-func (s *mmSolver) Solve(logger *logrus.Logger) {
+func (s *mmSolver) Solve(ctx context.Context, logger *logrus.Logger) {
+	interval := s.interval
 	for {
-		solveID := uuid.New().String()
-		ctx, cancel := context.WithTimeout(context.Background(), s.maxSolveTime)
-		matched, err := s.solve(logger.WithFields(logrus.Fields{
-			"solve_id": solveID,
-		}), ctx)
-		cancel()
-		if err != nil {
-			logger.WithError(err).Error("solve iteration failed")
-		}
-		if matched {
-			time.Sleep(500 * time.Millisecond)
-		} else {
-			time.Sleep(5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+			t := instrumentation.NewMetricsTimer(ctx, "mmsolver.dur", statsd.StringTag("op", "solve"))
+			solveID := uuid.New().String()
+			solveCtx, cancel := context.WithTimeout(ctx, s.maxSolveTime)
+			matched, err := s.solve(logger.WithFields(logrus.Fields{
+				"solve_id": solveID,
+			}), solveCtx)
+			cancel()
+			if err != nil {
+				logger.WithError(err).Error("solve iteration failed")
+			}
+			if matched {
+				interval = 500 * time.Millisecond
+			} else {
+				interval = s.interval
+			}
+			t.Done(err)
 		}
 	}
 }

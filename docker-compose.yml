@@ -23,6 +23,7 @@ services:
       - --data-dir=/var/lib/influxdb3/data
     volumes:
       - "./docker/data/influxdb3:/var/lib/influxdb3/data"
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     restart: always
@@ -31,6 +32,7 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+
   telegraf:
     image: telegraf:latest
     restart: always
@@ -43,6 +45,7 @@ services:
     volumes:
       - "./docker/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro"
       - "/var/run/docker.sock:/var/run/docker.sock"
+
   grafana:
     image: grafana/grafana:latest
     restart: always
@@ -56,6 +59,7 @@ services:
     volumes:
       - "./docker/data/grafana:/var/lib/grafana"
       - "./docker/grafana/provisioning:/etc/grafana/provisioning"
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     restart: always
@@ -74,19 +78,37 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
   mongo:
     image: mongo
     restart: always
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     volumes:
       - "./docker/data/mongodb:/data/db"
     ports:
       - "27017:27017"
+
+  mongo-setup:
+    image: mongo
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    command: >
+      mongosh --host mongo:27017 -u root -p root --authenticationDatabase admin
+      --eval "try { rs.status() } catch(e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }"
+
   cassandra:
     image: cassandra:4.1
     restart: always
@@ -96,6 +118,7 @@ services:
       CASSANDRA_CLUSTER_NAME: "texting-cluster"
     volumes:
       - "./docker/data/cassandra:/var/lib/cassandra"
+
   redis:
     image: redis:7.4-alpine
     restart: always
@@ -104,6 +127,7 @@ services:
     command: redis-server --save 20 1 --loglevel warning --requirepass $REDIS_PASSWORD
     volumes:
       - "./docker/data/redis:/data"
+
   auth:
     build:
       context: .
@@ -270,4 +294,49 @@ services:
       AWS_ENDPOINT: $AWS_ENDPOINT
       AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
+      - rabbitmq
+
+  trade:
+    build:
+      context: .
+      dockerfile: cmd/trade/Dockerfile
+    restart: always
+    environment:
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - mongo
+      - rabbitmq
+
+  wallet:
+    build:
+      context: .
+      dockerfile: cmd/wallet/Dockerfile
+    restart: always
+    environment:
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - mongo
+      - rabbitmq
+
+  courier:
+    build:
+      context: .
+      dockerfile: cmd/courier/Dockerfile
+    restart: always
+    environment:
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - mongo
       - rabbitmq

@@ -5,6 +5,9 @@ import (
 
 	"github.com/mercury/cmd/entitlements/lib/handlers"
 	"github.com/mercury/cmd/entitlements/lib/managers"
+	"github.com/mercury/pkg/clients/inventory"
+	"github.com/mercury/pkg/clients/trade"
+	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/rmq"
@@ -59,14 +62,27 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "auth")
+	walletClient, err := wallet.NewClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	inventoryClient, err := inventory.NewClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	tradeClient, err := trade.NewClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "entitlements")
 
 	consumer, err := rmq.NewConsumer(amqpURL, logger)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	defer consumer.Close()
-	grantHandlers := handlers.NewGrantHandlers(grantsManager, catalogManager)
+	grantHandlers := handlers.NewGrantHandlers(grantsManager, catalogManager, walletClient, inventoryClient, tradeClient)
 	catalogHandlers := handlers.NewCatalogHandlers(catalogManager)
 	consumer.Consume("ent.v1.check", grantHandlers.Check,
 		rmq.UseLogger(logger),

@@ -7,6 +7,11 @@ import (
 
 	"github.com/mercury/cmd/entitlements/lib/managers"
 	"github.com/mercury/pkg/clients/entitlements"
+	"github.com/mercury/pkg/clients/inventory"
+	"github.com/mercury/pkg/clients/trade"
+	"github.com/mercury/pkg/clients/wallet"
+	"github.com/mercury/pkg/ids"
+	"github.com/mercury/pkg/rmq"
 )
 
 type GrantHandlers interface {
@@ -16,16 +21,36 @@ type GrantHandlers interface {
 }
 
 type grantHandlers struct {
-	grantsManager  managers.GrantsManager
-	catalogManager managers.CatalogManager
+	grantsManager   managers.GrantsManager
+	catalogManager  managers.CatalogManager
+	walletClient    wallet.RMQClient
+	inventoryClient inventory.RMQClient
+	tradeClient     trade.RMQClient
 }
 
-func NewGrantHandlers(grantsManager managers.GrantsManager,
-	catalogManager managers.CatalogManager) GrantHandlers {
+func NewGrantHandlers(
+	grantsManager managers.GrantsManager, catalogManager managers.CatalogManager,
+	walletClient wallet.RMQClient, inventoryClient inventory.RMQClient,
+	tradeClient trade.RMQClient,
+) GrantHandlers {
 
 	return &grantHandlers{
-		grantsManager:  grantsManager,
-		catalogManager: catalogManager,
+		grantsManager:   grantsManager,
+		catalogManager:  catalogManager,
+		walletClient:    walletClient,
+		inventoryClient: inventoryClient,
+		tradeClient:     tradeClient,
+	}
+}
+
+func catalogGrantTypeToTradeGrantType(t entitlements.CatalogGrantType) (trade.GrantType, error) {
+	switch t {
+	case entitlements.CatalogGrantTypeEntitlement:
+		return trade.GrantTypeEntitlement, nil
+	case entitlements.CatalogGrantTypeCurrency:
+		return trade.GrantTypeCurrency, nil
+	default:
+		return "", entitlements.ErrInvalidRequest
 	}
 }
 
@@ -34,8 +59,15 @@ func (h *grantHandlers) Check(ctx context.Context, body []byte) ([]byte, error) 
 }
 
 func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) {
+	logger := rmq.GetLogger(ctx)
+
 	request := &entitlements.GrantRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
+		logger.WithError(err).Error("failed to parse grant request")
+		return nil, entitlements.ErrInvalidRequest
+	}
+	if !ids.ValidateOrderID(request.OrderID) {
+		logger.WithField("order_id", request.OrderID).Error("order_id must be a valid ULID")
 		return nil, entitlements.ErrInvalidRequest
 	}
 
@@ -44,29 +76,45 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		if errors.Is(err, managers.ErrEntitlementNotFound) {
 			return nil, entitlements.ErrEntitlementNotFound
 		}
+		logger.WithError(err).Error("failed to get entitlement")
 		return nil, entitlements.ErrFailedToGetEntitlement
 	}
-
-	grant, err := h.grantsManager.Grant(ctx, request.AccountID, entitlement.EntitlementID, entitlement.Version, entitlement.Unique)
-	if err != nil {
-		if errors.Is(err, managers.ErrDuplicateGrant) {
-			return nil, entitlements.ErrDuplicateGrant
+	grants := make([]trade.TradeGrant, 0, len(entitlement.GrantResults))
+	for _, grant := range entitlement.GrantResults {
+		grantType, err := catalogGrantTypeToTradeGrantType(grant.GrantType)
+		if err != nil {
+			logger.WithError(err).Error("unknown catalog grant type")
+			return nil, entitlements.ErrInvalidRequest
 		}
+		grants = append(grants, trade.TradeGrant{
+			PlayerID: request.PlayerID,
+			Type:     grantType,
+			TargetID: grant.TargetID,
+			Amount:   grant.Amount,
+		})
+	}
+	grant, err := h.grantsManager.CreateGrant(
+		ctx, request.AccountID, request.EntitlementID,
+		request.OrderID, request.Version)
+	if err != nil {
+		logger.WithError(err).Error("failed to record grant")
 		return nil, entitlements.ErrFailedToGrantEntitlement
 	}
 
-	return json.Marshal(entitlements.GrantResponse{
-		ID:            grant.ID,
-		EntitlementID: grant.EntitlementID,
-		CommitID:      grant.CommitID,
-		Count:         grant.Count,
-		AccountID:     grant.AccountID,
-		State:         string(grant.State),
-		GrantedAt:     grant.GrantedAt,
-		RevokedAt:     grant.RevokedAt,
-		ExpiresAt:     grant.ExpiresAt,
-		Metadata:      grant.Metadata,
+	tradeResp, err := h.tradeClient.Trade(ctx, request.OrderID, "system", grants)
+	if err != nil {
+		logger.WithError(err).Error("failed to submit trade for grant delivery")
+		return nil, entitlements.ErrFailedToGrantEntitlement
+	}
+
+	bts, err := json.Marshal(entitlements.GrantResponse{
+		OrderID: tradeResp.OrderID,
+		GrantID: grant.ID,
 	})
+	if err != nil {
+		return nil, entitlements.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *grantHandlers) Revoke(ctx context.Context, body []byte) ([]byte, error) {

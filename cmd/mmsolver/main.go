@@ -1,6 +1,12 @@
 package main
 
 import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/mercury/cmd/mmsolver/lib/solver"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/config"
@@ -28,7 +34,7 @@ func main() {
 	}
 	logger.SetLevel(level)
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "query")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "mmsolver")
 
 	publisherClient, err := publisher.NewRMQClient(amqpURL)
 	if err != nil {
@@ -41,6 +47,10 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	solver := solver.NewMMSolver(publisherClient, mmManager, statsdClient)
-	solver.Solve(logger)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	interval := 5 * time.Second
+	solver := solver.NewMMSolver(interval, publisherClient, mmManager, statsdClient)
+	solver.Solve(ctx, logger)
 }
