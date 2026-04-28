@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gatewaypriv/lib/handlers"
 	"github.com/mercury/pkg/clients/matchmaking"
+	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
@@ -62,9 +63,15 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer mmClient.Close()
+	walletClient, err := wallet.NewClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer walletClient.Close()
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gatewaypriv")
 	gsHandlers := handlers.NewGameserverHandlers(mmClient)
+	walletHandlers := handlers.NewWalletHandlers(walletClient)
 
 	e := echo.New()
 	v1 := e.Group("api/v1",
@@ -73,6 +80,8 @@ func main() {
 	gsv1 := v1.Group("/gs")
 	gsv1.POST("/register", gsHandlers.Register)
 	gsv1.POST("/unregister", gsHandlers.Unregister)
+
+	v1.POST("/wallet/add_currency", walletHandlers.AddCurrency)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

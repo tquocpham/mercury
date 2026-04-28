@@ -24,6 +24,8 @@
 # vendor/
 
 config.local.yaml
+tests/integration/config.dev.yaml
+tests/integration/config.prod.yaml
 node_modules
 .attach_pid*
 .claude/*

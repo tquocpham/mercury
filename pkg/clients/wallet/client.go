@@ -7,6 +7,7 @@ import (
 )
 
 type RMQClient interface {
+	Close()
 	GetWallet(ctx context.Context, playerID string) (*GetWalletResponse, error)
 	AddCurrency(ctx context.Context, playerID string, currencyID string, amount int, orderID string) (*GetWalletResponse, error)
 }
@@ -24,6 +25,10 @@ func NewClient(amqpURL string) (RMQClient, error) {
 	return &client{
 		Publisher: publisher,
 	}, nil
+}
+
+func (c *client) Close() {
+	c.Publisher.Close()
 }
 
 type Currency struct {

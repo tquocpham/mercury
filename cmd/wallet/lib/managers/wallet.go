@@ -2,6 +2,7 @@ package managers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/mercury/pkg/instrumentation"
@@ -41,11 +42,13 @@ func NewWalletManager(mongoAddr string, statsdClient *statsd.Client) (WalletMana
 	}, nil
 }
 
+var errDuplicateOrder = errors.New("duplicate order")
+
 func (s *walletManager) Grant(ctx context.Context, playerID string, currencyID string, amount int, orderID string) (_ *Wallet, err error) {
 	t := instrumentation.NewMetricsTimer(ctx, "walletmgr.dur", statsd.StringTag("op", "grant"))
 	defer func() { t.Done(err) }()
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	session, err := s.client.StartSession()
@@ -56,22 +59,18 @@ func (s *walletManager) Grant(ctx context.Context, playerID string, currencyID s
 
 	var wallet Wallet
 	_, err = session.WithTransaction(ctx, func(sessCtx context.Context) (any, error) {
-		// 1. Attempt to insert the order ID into a uniqueness table
-		// This will FAIL if the order was already processed
 		_, err := s.processedOrders.InsertOne(sessCtx, bson.M{
 			"_id":        orderID,
 			"player_id":  playerID,
 			"created_at": time.Now(),
 		})
-
 		if mongo.IsDuplicateKeyError(err) {
-			return nil, s.wallets.FindOne(sessCtx, bson.M{"player_id": playerID}).Decode(&wallet)
+			return nil, errDuplicateOrder
 		}
 		if err != nil {
 			return nil, err
 		}
 
-		// 2. Increment the specific currency balance and return the updated wallet
 		return nil, s.wallets.FindOneAndUpdate(
 			sessCtx,
 			bson.M{"player_id": playerID},
@@ -82,6 +81,13 @@ func (s *walletManager) Grant(ctx context.Context, playerID string, currencyID s
 			options.FindOneAndUpdate().SetReturnDocument(options.After).SetUpsert(true),
 		).Decode(&wallet)
 	})
+
+	if errors.Is(err, errDuplicateOrder) {
+		if err := s.wallets.FindOne(ctx, bson.M{"player_id": playerID}).Decode(&wallet); err != nil {
+			return nil, err
+		}
+		return &wallet, nil
+	}
 	if err != nil {
 		return nil, err
 	}
