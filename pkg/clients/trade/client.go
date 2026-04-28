@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mercury/pkg/rmq"
+	"github.com/sirupsen/logrus"
 )
 
 type RMQClient interface {
@@ -11,23 +12,26 @@ type RMQClient interface {
 	Trade(
 		ctx context.Context, orderID string, initiatorID string,
 		grants []TradeGrant) (*TradeResponse, error)
+	TradeStatus(ctx context.Context, orderID string) (*TradeStatusResponse, error)
 }
 type rmqClient struct {
-	Publisher *rmq.Publisher
+	publisher *rmq.Publisher
+	logger    *logrus.Logger
 }
 
-func NewClient(amqpURL string) (RMQClient, error) {
+func NewClient(logger *logrus.Logger, amqpURL string) (RMQClient, error) {
 	publisher, err := rmq.NewPublisher(amqpURL)
 	if err != nil {
 		return nil, err
 	}
 	return &rmqClient{
-		Publisher: publisher,
+		publisher: publisher,
+		logger:    logger,
 	}, nil
 }
 
 func (c *rmqClient) Close() {
-	c.Publisher.Close()
+	c.publisher.Close()
 }
 
 type GrantType string
@@ -59,8 +63,7 @@ func (c *rmqClient) Trade(
 	ctx context.Context, orderID string, initiatorID string,
 	grants []TradeGrant,
 ) (*TradeResponse, error) {
-
-	return rmq.Request[TradeRequest, TradeResponse](ctx, c.Publisher, "trade.v1.trade", TradeRequest{
+	return rmq.Request[TradeRequest, TradeResponse](ctx, c.publisher, "trade.v1.executetrade", TradeRequest{
 		OrderID:     orderID,
 		InitiatorID: initiatorID,
 		Grants:      grants,
@@ -79,7 +82,7 @@ type TradeStatusResponse struct {
 func (c *rmqClient) TradeStatus(
 	ctx context.Context, orderID string,
 ) (*TradeStatusResponse, error) {
-	return rmq.Request[TradeStatusRequest, TradeStatusResponse](ctx, c.Publisher, "trade.v1.status", TradeStatusRequest{
+	return rmq.Request[TradeStatusRequest, TradeStatusResponse](ctx, c.publisher, "trade.v1.status", TradeStatusRequest{
 		OrderID: orderID,
 	})
 }

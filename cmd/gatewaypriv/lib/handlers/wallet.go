@@ -11,6 +11,7 @@ import (
 
 type WalletHandlers interface {
 	AddCurrency(c echo.Context) error
+	GetWallet(c echo.Context) error
 }
 
 type walletHandlers struct {
@@ -24,6 +25,7 @@ func NewWalletHandlers(
 		walletClient: walletClient,
 	}
 }
+
 func (h *walletHandlers) AddCurrency(c echo.Context) error {
 	ctx := instrumentation.ToContext(c)
 	request := &wallet.AddCurrencyRequest{}
@@ -31,6 +33,16 @@ func (h *walletHandlers) AddCurrency(c echo.Context) error {
 		return echo.ErrBadRequest
 	}
 	response, err := h.walletClient.AddCurrency(ctx, request.PlayerID, request.CurrencyID, request.Amount, request.OrderID)
+	if err != nil {
+		return wallet.ConvertHttpError(err)
+	}
+	return c.JSON(http.StatusOK, response)
+}
+
+func (h *walletHandlers) GetWallet(c echo.Context) error {
+	ctx := instrumentation.ToContext(c)
+	playerID := c.Param("playerid")
+	response, err := h.walletClient.GetWallet(ctx, playerID)
 	if err != nil {
 		return wallet.ConvertHttpError(err)
 	}

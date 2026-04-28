@@ -21,6 +21,7 @@ type GrantItem struct {
 	TargetID  string    `bson:"target_id"`
 	Amount    int       `bson:"amount"`
 	Delivered bool      `bson:"delivered"`
+	OrderID   string    `bson:"order_id"`
 }
 
 type OutboxEvent struct {

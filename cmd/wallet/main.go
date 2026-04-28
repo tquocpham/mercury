@@ -51,5 +51,9 @@ func main() {
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)
+	consumer.Consume("wallet.v1.get_wallet", rmqHandlers.GetWallet,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
 	consumer.Wait()
 }

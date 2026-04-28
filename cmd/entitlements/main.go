@@ -70,7 +70,7 @@ func main() {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	tradeClient, err := trade.NewClient(amqpURL)
+	tradeClient, err := trade.NewClient(logger, amqpURL)
 	if err != nil {
 		logrus.Fatal(err)
 	}

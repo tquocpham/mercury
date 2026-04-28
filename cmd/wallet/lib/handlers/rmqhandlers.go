@@ -3,15 +3,29 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/mercury/cmd/wallet/lib/managers"
 	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/ids"
 	"github.com/mercury/pkg/rmq"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
+
+func convertDBCurrencyToRMQCurrency(dbcurr map[string]int) []wallet.Currency {
+	currencies := make([]wallet.Currency, 0, len(dbcurr))
+	for currencyType, amount := range dbcurr {
+		currencies = append(currencies, wallet.Currency{
+			CurrencyType: currencyType,
+			Amount:       amount,
+		})
+	}
+	return currencies
+}
 
 type RMQHandlers interface {
 	AddCurrency(ctx context.Context, body []byte) ([]byte, error)
+	GetWallet(ctx context.Context, body []byte) ([]byte, error)
 }
 
 type rmqHanders struct {
@@ -28,7 +42,7 @@ func (h *rmqHanders) AddCurrency(ctx context.Context, body []byte) ([]byte, erro
 	logger := rmq.GetLogger(ctx)
 	request := &wallet.AddCurrencyRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		logger.WithError(err).Error("failed to parse wallet request")
+		logger.WithError(err).Error("failed to parse add currency request")
 		return nil, wallet.ErrInvalidRequest
 	}
 	if !ids.ValidateOrderID(request.OrderID) {
@@ -42,17 +56,34 @@ func (h *rmqHanders) AddCurrency(ctx context.Context, body []byte) ([]byte, erro
 	if err != nil {
 		return nil, wallet.ErrFailedToGrantCurrency
 	}
-	currencies := make([]wallet.Currency, 0, len(walletInfo.Currencies))
-	for currencyType, amount := range walletInfo.Currencies {
-		currencies = append(currencies, wallet.Currency{
-			CurrencyType: currencyType,
-			Amount:       amount,
-		})
-	}
 
 	bts, err := json.Marshal(wallet.GetWalletResponse{
 		PlayerID:   walletInfo.PlayerID,
-		Currencies: currencies,
+		Currencies: convertDBCurrencyToRMQCurrency(walletInfo.Currencies),
+	})
+	if err != nil {
+		return nil, wallet.ErrFailedToCreateResponse
+	}
+	return bts, nil
+}
+
+func (h *rmqHanders) GetWallet(ctx context.Context, body []byte) ([]byte, error) {
+	logger := rmq.GetLogger(ctx)
+	request := &wallet.GetWalletRequest{}
+	if err := json.Unmarshal(body, request); err != nil {
+		logger.WithError(err).Error("failed to parse wallet request")
+		return nil, wallet.ErrInvalidRequest
+	}
+	walletInfo, err := h.walletManager.GetWallet(ctx, request.PlayerID)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, wallet.ErrWalletDoesNotExist
+		}
+		return nil, wallet.ErrFailedToGetWallet
+	}
+	bts, err := json.Marshal(wallet.GetWalletResponse{
+		PlayerID:   walletInfo.PlayerID,
+		Currencies: convertDBCurrencyToRMQCurrency(walletInfo.Currencies),
 	})
 	if err != nil {
 		return nil, wallet.ErrFailedToCreateResponse

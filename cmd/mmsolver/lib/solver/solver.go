@@ -18,29 +18,33 @@ type MMSolver interface {
 }
 
 type mmSolver struct {
-	interval        time.Duration
-	publisherClient publisher.RMQClient
-	statsdClient    *statsd.Client
-	maxSolveTime    time.Duration
-	mmManager       managers.MatchmakingManager
+	checkInterval      time.Duration
+	solverWorkInterval time.Duration
+	publisherClient    publisher.RMQClient
+	statsdClient       *statsd.Client
+	maxSolveTime       time.Duration
+	mmManager          managers.MatchmakingManager
 }
 
 func NewMMSolver(
-	interval time.Duration,
+	checkInterval time.Duration,
+	solverWorkInterval time.Duration,
+	maxSolveTime time.Duration,
 	publisherClient publisher.RMQClient,
 	mmManager managers.MatchmakingManager,
 	statsdClient *statsd.Client) MMSolver {
 	return &mmSolver{
-		interval:        interval,
-		publisherClient: publisherClient,
-		statsdClient:    statsdClient,
-		maxSolveTime:    10 * time.Minute,
-		mmManager:       mmManager,
+		checkInterval:      checkInterval,
+		publisherClient:    publisherClient,
+		statsdClient:       statsdClient,
+		maxSolveTime:       maxSolveTime,
+		mmManager:          mmManager,
+		solverWorkInterval: solverWorkInterval,
 	}
 }
 
 func (s *mmSolver) Solve(ctx context.Context, logger *logrus.Logger) {
-	interval := s.interval
+	interval := s.checkInterval
 	for {
 		select {
 		case <-ctx.Done():
@@ -57,9 +61,9 @@ func (s *mmSolver) Solve(ctx context.Context, logger *logrus.Logger) {
 				logger.WithError(err).Error("solve iteration failed")
 			}
 			if matched {
-				interval = 500 * time.Millisecond
+				interval = s.solverWorkInterval
 			} else {
-				interval = s.interval
+				interval = s.checkInterval
 			}
 			t.Done(err)
 		}

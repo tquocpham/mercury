@@ -30,6 +30,10 @@ func main() {
 	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	// // database configs
 	mongoAddr := cfg.SetDefaultString("mongo_addr", "mongodb://root:root@mongo:27017", true)
+	lockTimeout := cfg.SetDefaultDuration("lock_timeout", time.Minute, false)
+	maxAttempts := cfg.SetDefaultInt("max_attempts", 5, false)
+	courierCheckInterval := cfg.SetDefaultDuration("couier_check_interval", time.Second, false)
+	courierWorkInterval := cfg.SetDefaultDuration("couier_work_interval", time.Second, false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -51,18 +55,21 @@ func main() {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "query")
-	interval := 1 * time.Second
-	courier, err := courier.NewCourier(interval, mongoAddr, inventoryClient, walletClient, statsdClient)
+	outboxManager, err := courier.NewOutboxManager(mongoAddr, statsdClient, lockTimeout, maxAttempts)
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	c := courier.NewCourier(
+		courierCheckInterval, courierWorkInterval, outboxManager,
+		inventoryClient, walletClient, statsdClient)
 
 	log.Println("Courier Relay started. Churning outbox...")
 
 	// 5. Start the courier loop
 	// We run this in its own goroutine if we want to add more workers
-	go courier.Run(ctx, logger)
+	go c.Run(ctx, logger)
 
 	// 6. Wait for Shutdown Signal
 	<-ctx.Done()
