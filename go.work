@@ -2,7 +2,7 @@ go 1.26.1
 
 use (
 	./cmd/auth
-	./cmd/courier
+	./cmd/tradecourier
 	./cmd/entitlements
 	./cmd/gateway
 	./cmd/gatewaypriv

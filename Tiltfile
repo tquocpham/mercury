@@ -40,7 +40,7 @@ services = [
     "mmsolver",
     "trade",
     "wallet",
-    "courier",
+    "tradecourier",
 ]
 
 for svc in services:
@@ -62,7 +62,7 @@ go_services = [
     ("mmsolver",    "cmd/mmsolver"),
     ("trade",       "cmd/trade"),
     ("wallet",      "cmd/wallet"),
-    ("courier",     "cmd/courier"),
+    ("tradecourier", "cmd/tradecourier"),
 ]
 
 for svc, path in go_services:

@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	courier "github.com/mercury/cmd/courier/lib"
+	courier "github.com/mercury/cmd/tradecourier/lib"
 	"github.com/mercury/pkg/clients/inventory"
 	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/config"

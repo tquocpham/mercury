@@ -333,10 +333,10 @@ services:
       - mongo
       - rabbitmq
 
-  courier:
+  tradecourier:
     build:
       context: .
-      dockerfile: cmd/courier/Dockerfile
+      dockerfile: cmd/tradecourier/Dockerfile
     restart: always
     environment:
       LOG_LEVEL: debug
