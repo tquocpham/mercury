@@ -9,10 +9,10 @@ use (
 	./cmd/messages
 	./cmd/mmservice
 	./cmd/mmsolver
+	./cmd/msgworker
 	./cmd/publisher
 	./cmd/subscriber
 	./cmd/trade
 	./cmd/wallet
-	./cmd/worker
 	./pkg
 )

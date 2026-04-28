@@ -5,8 +5,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/mercury/cmd/worker/lib/handlers"
-	"github.com/mercury/cmd/worker/lib/managers"
+	"github.com/mercury/cmd/msgworker/lib/handlers"
+	"github.com/mercury/cmd/msgworker/lib/managers"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/kmq"
