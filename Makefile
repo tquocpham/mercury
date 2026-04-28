@@ -2,7 +2,7 @@ SERVICES := auth courier entitlements gateway gatewaypriv messages mmservice mms
 BIN_DIR  := bin
 MODULES  := pkg $(addprefix cmd/,$(SERVICES))
 
-.PHONY: all $(SERVICES) tidy clean
+.PHONY: all $(SERVICES) tidy clean integrationtests
 
 all: $(SERVICES)
 
@@ -15,3 +15,6 @@ tidy:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+integrationtests:
+	cd tests/integration && pip install -r requirements.txt -q && INTEGRATION_CONFIG=$(CONFIG) pytest $(ARGS) -v

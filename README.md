@@ -1,7 +1,9 @@
 # Mercury
 
-A Go microservices monorepo for a video games backend. Composing of a few different services:
+Mercury is an open source Go microservices video games backend, composing of a few different services:
 Authentication, Notifications, Messaging, and Entitlements. More to come!
+This is meant to be used by godot games. There is a godot SDK for cd script and c# in `/sdk/`.
+
 Messages are produced via an HTTP API, queued through Kafka for ordering guarantees, persisted to Cassandra, and delivered to connected clients in real time via WebSocket.
 
 ## Architecture

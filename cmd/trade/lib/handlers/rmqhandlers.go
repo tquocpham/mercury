@@ -34,7 +34,7 @@ func (h *rmqHanders) Trade(ctx context.Context, body []byte) ([]byte, error) {
 		return nil, trade.ErrInvalidRequest
 	}
 	if !ids.ValidateOrderID(request.OrderID) {
-		logger.WithField("order_id", request.OrderID).Error("invalid order_id. Must be a valid ULID")
+		logger.WithField("order_id", request.OrderID).Error("order_id must be a valid ULID")
 		return nil, trade.ErrInvalidRequest
 	}
 	grants := make([]trade.GrantItem, 0, len(request.Grants))
