@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gatewaypriv/lib/handlers"
 	"github.com/mercury/pkg/clients/matchmaking"
+	"github.com/mercury/pkg/clients/trade"
 	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
@@ -68,10 +69,16 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer walletClient.Close()
+	tradeClient, err := trade.NewClient(logger, amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer tradeClient.Close()
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gatewaypriv")
 	gsHandlers := handlers.NewGameserverHandlers(mmClient)
 	walletHandlers := handlers.NewWalletHandlers(walletClient)
+	tradeHandlers := handlers.NewTradeHandlers(tradeClient)
 
 	e := echo.New()
 	v1 := e.Group("api/v1",
@@ -81,7 +88,13 @@ func main() {
 	gsv1.POST("/register", gsHandlers.Register)
 	gsv1.POST("/unregister", gsHandlers.Unregister)
 
-	v1.POST("/wallet/add_currency", walletHandlers.AddCurrency)
+	walletv1 := v1.Group("/wallet")
+	walletv1.POST("/add_currency", walletHandlers.AddCurrency)
+	walletv1.GET("/wallet/:playerid", walletHandlers.GetWallet)
+
+	tradev1 := v1.Group("/trade")
+	tradev1.POST("/trade", tradeHandlers.Trade)
+	tradev1.GET("/status/:orderid", tradeHandlers.GetTradeStatus)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

@@ -2,7 +2,7 @@ SERVICES := auth tradecourier entitlements gateway gatewaypriv messages mmservic
 BIN_DIR  := bin
 MODULES  := pkg $(addprefix cmd/,$(SERVICES))
 
-.PHONY: all $(SERVICES) tidy clean integrationtests
+.PHONY: all $(SERVICES) tidy clean docker-build integrationtests
 
 all: $(SERVICES)
 
@@ -15,6 +15,11 @@ tidy:
 
 clean:
 	rm -rf $(BIN_DIR)
+	docker system prune -f
+	docker image prune -a -f
+
+docker-build:
+	docker compose build --parallel 2
 
 integrationtests:
 	cd tests/integration && pip install -r requirements.txt -q && INTEGRATION_CONFIG=$(CONFIG) pytest $(ARGS) -v

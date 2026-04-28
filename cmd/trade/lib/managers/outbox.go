@@ -8,6 +8,7 @@ import (
 	"github.com/mercury/pkg/clients/trade"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/smira/go-statsd"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -35,6 +36,17 @@ func NewOutboxManager(mongoAddr string, statsdClient *statsd.Client) (OutboxMana
 	// mongo.Connect creates a connection pool managed by the driver.
 	// The pool is created once at startup, reused across all requests
 	col := client.Database("trade").Collection("outbox")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = col.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "order_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &outboxManager{
 		col:          col,
 		statsdClient: statsdClient,
@@ -48,15 +60,23 @@ func (m *outboxManager) CreateOutbox(ctx context.Context, orderID, initiatorID s
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	zeroTime := time.Time{}
-	_, err := m.col.InsertOne(ctx, &trade.OutboxEvent{
+	event := trade.OutboxEvent{
+		ID:          primitive.NewObjectID(), // Manually set to ensure it's an ObjectID
 		OrderID:     orderID,
 		InitiatorID: initiatorID,
 		Grants:      grants,
 		Status:      trade.OutboxStatusPending,
 		Attempts:    0,
-		LockedAt:    &zeroTime,
-	})
+		LockedAt:    &time.Time{}, // Pointer to zero time as per your struct
+	}
+
+	_, err := m.col.UpdateOne(ctx,
+		bson.M{"order_id": orderID},
+		bson.M{
+			"$setOnInsert": event,
+		},
+		options.UpdateOne().SetUpsert(true),
+	)
 	return err
 }
 

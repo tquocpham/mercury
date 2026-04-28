@@ -12,7 +12,7 @@ import (
 )
 
 type RMQHandlers interface {
-	Trade(ctx context.Context, body []byte) ([]byte, error)
+	ExecuteTrade(ctx context.Context, body []byte) ([]byte, error)
 	TradeStatus(ctx context.Context, body []byte) ([]byte, error)
 }
 
@@ -26,7 +26,7 @@ func NewRMQHandlers(outboxManager managers.OutboxManager) RMQHandlers {
 	}
 }
 
-func (h *rmqHanders) Trade(ctx context.Context, body []byte) ([]byte, error) {
+func (h *rmqHanders) ExecuteTrade(ctx context.Context, body []byte) ([]byte, error) {
 	logger := rmq.GetLogger(ctx)
 	request := &trade.TradeRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
@@ -45,6 +45,7 @@ func (h *rmqHanders) Trade(ctx context.Context, body []byte) ([]byte, error) {
 			TargetID:  grant.TargetID,
 			Amount:    grant.Amount,
 			Delivered: false,
+			OrderID:   ids.NewOrderID(),
 		})
 	}
 

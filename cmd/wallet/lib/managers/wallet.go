@@ -14,6 +14,7 @@ import (
 
 type WalletManager interface {
 	Grant(ctx context.Context, playerID string, currencyID string, amount int, orderID string) (*Wallet, error)
+	GetWallet(ctx context.Context, playerID string) (*Wallet, error)
 }
 
 type Wallet struct {
@@ -44,7 +45,24 @@ func NewWalletManager(mongoAddr string, statsdClient *statsd.Client) (WalletMana
 
 var errDuplicateOrder = errors.New("duplicate order")
 
-func (s *walletManager) Grant(ctx context.Context, playerID string, currencyID string, amount int, orderID string) (_ *Wallet, err error) {
+func (s *walletManager) GetWallet(ctx context.Context, playerID string) (_ *Wallet, err error) {
+	t := instrumentation.NewMetricsTimer(ctx, "walletmgr.dur", statsd.StringTag("op", "get_wallet"))
+	defer func() { t.Done(err) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var wallet Wallet
+	if err := s.wallets.FindOne(ctx, bson.M{"player_id": playerID}).Decode(&wallet); err != nil {
+		return nil, err
+	}
+	return &wallet, nil
+}
+
+func (s *walletManager) Grant(
+	ctx context.Context, playerID string, currencyID string, amount int, orderID string,
+) (_ *Wallet, err error) {
+
 	t := instrumentation.NewMetricsTimer(ctx, "walletmgr.dur", statsd.StringTag("op", "grant"))
 	defer func() { t.Done(err) }()
 
