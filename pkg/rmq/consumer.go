@@ -2,6 +2,7 @@ package rmq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -82,25 +83,52 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 				response, err := h(ctx, msg.Body)
 				cancel()
 				if err != nil {
-					c.logger.WithError(err).Error("mq: handler error, nacking")
-					msg.Nack(false, !msg.Redelivered)
+					c.logger.WithError(err).Error("mq: handler failed")
+					if msg.ReplyTo != "" {
+						var rmqErr *Error
+						if !errors.As(err, &rmqErr) {
+							rmqErr = NewError(500, err.Error())
+						}
+						envBody, merr := wrapError(rmqErr)
+						if merr != nil {
+							c.logger.WithError(merr).Error("mq: failed to marshal error response, nacking")
+							msg.Nack(false, !msg.Redelivered)
+							continue
+						}
+						if perr := ch.Publish("", msg.ReplyTo, false, false, amqp.Publishing{
+							ContentType:   "application/json",
+							CorrelationId: msg.CorrelationId,
+							Body:          envBody,
+						}); perr != nil {
+							c.logger.WithError(perr).Error("mq: failed to publish error reply, nacking")
+							msg.Nack(false, !msg.Redelivered)
+							continue
+						}
+						msg.Ack(false)
+					} else {
+						msg.Nack(false, !msg.Redelivered)
+					}
 					continue
 				}
 
-				msg.Ack(false)
 				if msg.ReplyTo != "" && response != nil {
-					ch.Publish(
-						"",
-						msg.ReplyTo,
-						false,
-						false,
-						amqp.Publishing{
-							ContentType:   "application/json",
-							CorrelationId: msg.CorrelationId,
-							Body:          response,
-						},
-					)
+					envBody, merr := wrapSuccess(response)
+					if merr != nil {
+						c.logger.WithError(merr).Error("mq: failed to marshal success response, nacking")
+						msg.Nack(false, !msg.Redelivered)
+						continue
+					}
+					if perr := ch.Publish("", msg.ReplyTo, false, false, amqp.Publishing{
+						ContentType:   "application/json",
+						CorrelationId: msg.CorrelationId,
+						Body:          envBody,
+					}); perr != nil {
+						c.logger.WithError(perr).Error("mq: failed to publish success reply, nacking")
+						msg.Nack(false, !msg.Redelivered)
+						continue
+					}
 				}
+				msg.Ack(false)
 			}
 
 			ch.Close()

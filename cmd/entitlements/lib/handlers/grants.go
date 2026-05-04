@@ -101,7 +101,7 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		return nil, entitlements.ErrFailedToGrantEntitlement
 	}
 
-	tradeResp, err := h.tradeClient.Trade(ctx, request.OrderID, "system", grants)
+	tradeResp, err := h.tradeClient.ExecuteTrade(ctx, request.OrderID, "system", grants)
 	if err != nil {
 		logger.WithError(err).Error("failed to submit trade for grant delivery")
 		return nil, entitlements.ErrFailedToGrantEntitlement
