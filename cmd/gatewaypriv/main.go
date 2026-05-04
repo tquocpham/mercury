@@ -93,6 +93,9 @@ func main() {
 	walletv1.GET("/wallet/:playerid", walletHandlers.GetWallet)
 
 	tradev1 := v1.Group("/trade")
+	tradev1.POST("/draft", tradeHandlers.DraftTrade)
+	tradev1.POST("/lock", tradeHandlers.LockTrade)
+	tradev1.POST("/unlock", tradeHandlers.UnlockTrade)
 	tradev1.POST("/trade", tradeHandlers.Trade)
 	tradev1.GET("/status/:orderid", tradeHandlers.GetTradeStatus)
 

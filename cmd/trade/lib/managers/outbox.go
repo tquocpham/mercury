@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mercury/pkg/clients/trade"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/smira/go-statsd"
@@ -18,9 +19,18 @@ var (
 	ErrOrderNotFound = errors.New("order not found")
 )
 
+// newCommitID creates a commit id string
+func NewCommitID() string {
+	return uuid.New().String()
+}
+
 type OutboxManager interface {
-	CreateOutbox(ctx context.Context, orderID, initiatorID string, grants []trade.GrantItem) error
-	GetOutboxStatus(ctx context.Context, orderID string) (*trade.OutboxEvent, error)
+	CreateOutbox(ctx context.Context, orderID, initiatorID string, grants []trade.GrantItem) (_ error)
+	GetOutboxStatus(ctx context.Context, orderID string) (_ *trade.OutboxEvent, _ error)
+	InsertTrade(ctx context.Context, orderID string, event *trade.OutboxEvent) (_ error)
+	UpdateTradeGrants(ctx context.Context, orderID, commitID, playerID string, grants []trade.GrantItem) (_ *trade.OutboxEvent, _ error)
+	LockTrade(ctx context.Context, orderID, commitID, playerID string) (_ *trade.OutboxEvent, _ error)
+	UnlockTrade(ctx context.Context, orderID, commitID, playerID string) (_ *trade.OutboxEvent, _ error)
 }
 
 type outboxManager struct {
@@ -51,6 +61,146 @@ func NewOutboxManager(mongoAddr string, statsdClient *statsd.Client) (OutboxMana
 		col:          col,
 		statsdClient: statsdClient,
 	}, nil
+}
+
+func (m *outboxManager) InsertTrade(ctx context.Context, orderID string, event *trade.OutboxEvent) (_ error) {
+
+	t := instrumentation.NewMetricsTimer(ctx, "trademgr.dur", statsd.StringTag("op", "insert_trade"))
+	defer func() { t.Done(nil) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	event.Modified = now
+	event.Created = now
+	_, err := m.col.UpdateOne(ctx,
+		bson.M{
+			"order_id": orderID,
+		},
+		bson.M{
+			"$setOnInsert": event,
+		},
+		options.UpdateOne().SetUpsert(true),
+	)
+	return err
+}
+
+func (m *outboxManager) UpdateTradeGrants(
+	ctx context.Context, orderID, commitID, playerID string, grants []trade.GrantItem) (_ *trade.OutboxEvent, _ error) {
+
+	t := instrumentation.NewMetricsTimer(ctx, "trademgr.dur", statsd.StringTag("op", "update_trade"))
+	defer func() { t.Done(nil) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var updated trade.OutboxEvent
+	err := m.col.FindOneAndUpdate(ctx,
+		bson.M{
+			"order_id":   orderID,
+			"commit_id":  commitID,
+			"status":     trade.OutboxStatusDraft,
+			"signatures": bson.M{"$size": 0},
+		},
+		bson.M{
+			"$set": bson.M{
+				"grants_by_player." + playerID: grants,
+				"modified":                     time.Now(),
+				"commit_id":                    NewCommitID(),
+			},
+		},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Decode(&updated)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, ErrOrderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &updated, nil
+}
+
+func (m *outboxManager) LockTrade(
+	ctx context.Context, orderID, commitID, playerID string) (_ *trade.OutboxEvent, _ error) {
+
+	t := instrumentation.NewMetricsTimer(ctx, "trademgr.dur", statsd.StringTag("op", "lock_trade"))
+	defer func() { t.Done(nil) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var updated trade.OutboxEvent
+	err := m.col.FindOneAndUpdate(ctx,
+		bson.M{
+			"order_id":            orderID,
+			"commit_id":           commitID,
+			"status":              trade.OutboxStatusDraft,
+			"contracting_parties": playerID,
+		},
+		bson.M{
+			"$addToSet": bson.M{"signatures": playerID},
+			"$set": bson.M{
+				"modified":  time.Now(),
+				"commit_id": NewCommitID(),
+			},
+		},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Decode(&updated)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, ErrOrderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if len(updated.Signatures) == len(updated.ContractingParties) {
+		_, err = m.col.UpdateOne(ctx,
+			bson.M{"order_id": orderID, "commit_id": updated.CommitID},
+			bson.M{"$set": bson.M{"status": trade.OutboxStatusPending}},
+		)
+		if err != nil {
+			return nil, err
+		}
+		updated.Status = trade.OutboxStatusPending
+	}
+
+	return &updated, nil
+}
+
+func (m *outboxManager) UnlockTrade(
+	ctx context.Context, orderID, commitID, playerID string) (_ *trade.OutboxEvent, _ error) {
+
+	t := instrumentation.NewMetricsTimer(ctx, "trademgr.dur", statsd.StringTag("op", "unlock_trade"))
+	defer func() { t.Done(nil) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var updated trade.OutboxEvent
+	err := m.col.FindOneAndUpdate(ctx,
+		bson.M{
+			"order_id":            orderID,
+			"commit_id":           commitID,
+			"status":              trade.OutboxStatusDraft,
+			"contracting_parties": playerID,
+		},
+		bson.M{
+			"$set": bson.M{
+				"signatures": []string{},
+				"modified":   time.Now(),
+				"commit_id":  NewCommitID(),
+			},
+		},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Decode(&updated)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, ErrOrderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &updated, nil
 }
 
 func (m *outboxManager) CreateOutbox(ctx context.Context, orderID, initiatorID string, grants []trade.GrantItem) (_ error) {

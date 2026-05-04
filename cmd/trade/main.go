@@ -41,6 +41,18 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer consumer.Close()
+	consumer.Consume("trade.v1.drafttrade", rmqHandlers.DraftTrade,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("trade.v1.locktrade", rmqHandlers.LockTrade,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("trade.v1.unlocktrade", rmqHandlers.UnlockTrade,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
 	consumer.Consume("trade.v1.executetrade", rmqHandlers.ExecuteTrade,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),

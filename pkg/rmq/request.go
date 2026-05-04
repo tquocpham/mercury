@@ -22,6 +22,10 @@ func Request[Req any, Resp any](ctx context.Context, p *Publisher, route string,
 	if err != nil {
 		return nil, err
 	}
+	var rmqErr Error
+	if json.Unmarshal(response, &rmqErr) == nil && rmqErr.Code != "" {
+		return nil, &rmqErr
+	}
 	var resp Resp
 	if err := json.Unmarshal(response, &resp); err != nil {
 		return nil, err
