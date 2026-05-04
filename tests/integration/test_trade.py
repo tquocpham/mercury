@@ -241,3 +241,200 @@ def test_all_signed_transitions_to_pending(gatewaypriv, two_players):
         lock_resp2 = lock_trade(client, gatewaypriv, order_id, player2, lock_resp1["transaction_id"])
         assert lock_resp2["status"] == "PENDING"
         assert set(lock_resp2["signatures"]) == {player1, player2}
+
+
+def test_lock_stale_transaction_id_conflicts(gatewaypriv, two_players):
+    """Locking with a stale transaction_id returns 409."""
+    player1, player2 = two_players
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+        stale_id = resp["transaction_id"]
+
+        # Advance the transaction_id
+        draft_trade(client, gatewaypriv, order_id, player1, player1,
+                    [player1, player2],
+                    transaction_id=stale_id,
+                    grants=[
+                        {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 200},
+                    ])
+
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/lock", json={
+            "order_id":       order_id,
+            "player_id":      player1,
+            "transaction_id": stale_id,
+        })
+        assert resp.status_code == 409, f"expected 409, got {resp.status_code}: {resp.text}"
+
+
+def test_unlock_stale_transaction_id_conflicts(gatewaypriv, two_players):
+    """Unlocking with a stale transaction_id returns 409."""
+    player1, player2 = two_players
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+
+        lock_resp = lock_trade(client, gatewaypriv, order_id, player1, resp["transaction_id"])
+        stale_id = lock_resp["transaction_id"]
+
+        # Advance the transaction_id by unlocking
+        unlock_trade(client, gatewaypriv, order_id, player1, stale_id)
+
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/unlock", json={
+            "order_id":       order_id,
+            "player_id":      player1,
+            "transaction_id": stale_id,
+        })
+        assert resp.status_code == 409, f"expected 409, got {resp.status_code}: {resp.text}"
+
+
+def test_non_contracting_party_cannot_lock(gatewaypriv, two_players):
+    """A player not in contracting_parties cannot lock the trade."""
+    player1, player2 = two_players
+    outsider = new_player_id("outsider")
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/lock", json={
+            "order_id":       order_id,
+            "player_id":      outsider,
+            "transaction_id": resp["transaction_id"],
+        })
+        assert resp.status_code == 409, f"expected 409, got {resp.status_code}: {resp.text}"
+
+
+def test_non_contracting_party_cannot_unlock(gatewaypriv, two_players):
+    """A player not in contracting_parties cannot unlock the trade."""
+    player1, player2 = two_players
+    outsider = new_player_id("outsider")
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+
+        lock_resp = lock_trade(client, gatewaypriv, order_id, player1, resp["transaction_id"])
+
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/unlock", json={
+            "order_id":       order_id,
+            "player_id":      outsider,
+            "transaction_id": lock_resp["transaction_id"],
+        })
+        assert resp.status_code == 409, f"expected 409, got {resp.status_code}: {resp.text}"
+
+
+def test_cannot_lock_pending_trade(gatewaypriv, two_players):
+    """Once a trade is PENDING, further lock attempts are rejected."""
+    player1, player2 = two_players
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+
+        lock_resp1 = lock_trade(client, gatewaypriv, order_id, player1, resp["transaction_id"])
+        lock_resp2 = lock_trade(client, gatewaypriv, order_id, player2, lock_resp1["transaction_id"])
+        assert lock_resp2["status"] == "PENDING"
+
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/lock", json={
+            "order_id":       order_id,
+            "player_id":      player1,
+            "transaction_id": lock_resp2["transaction_id"],
+        })
+        assert resp.status_code == 409, f"expected 409, got {resp.status_code}: {resp.text}"
+
+
+def test_cannot_unlock_pending_trade(gatewaypriv, two_players):
+    """Once a trade is PENDING, unlock attempts are rejected."""
+    player1, player2 = two_players
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+
+        lock_resp1 = lock_trade(client, gatewaypriv, order_id, player1, resp["transaction_id"])
+        lock_resp2 = lock_trade(client, gatewaypriv, order_id, player2, lock_resp1["transaction_id"])
+        assert lock_resp2["status"] == "PENDING"
+
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/unlock", json={
+            "order_id":       order_id,
+            "player_id":      player1,
+            "transaction_id": lock_resp2["transaction_id"],
+        })
+        assert resp.status_code == 409, f"expected 409, got {resp.status_code}: {resp.text}"
+
+
+def test_any_party_can_unlock(gatewaypriv, two_players):
+    """Any contracting party can unlock, not just the one who signed."""
+    player1, player2 = two_players
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                           [player1, player2],
+                           grants=[
+                               {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                           ])
+
+        lock_resp = lock_trade(client, gatewaypriv, order_id, player1, resp["transaction_id"])
+        assert player1 in lock_resp["signatures"]
+
+        # Player2 unlocks player1's signature
+        unlock_resp = unlock_trade(client, gatewaypriv, order_id, player2, lock_resp["transaction_id"])
+        assert unlock_resp["signatures"] == []
+
+
+def test_draft_missing_player_id(gatewaypriv, two_players):
+    """DraftTrade without player_id returns 400."""
+    player1, player2 = two_players
+    order_id = new_order_id()
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/draft", json={
+            "order_id":            order_id,
+            "initiator_id":        player1,
+            "contracting_parties": [player1, player2],
+            "grants":              [],
+        })
+        assert resp.status_code == 400, f"expected 400, got {resp.status_code}: {resp.text}"
+
+
+def test_draft_invalid_order_id(gatewaypriv, two_players):
+    """DraftTrade with a non-ULID order_id returns 400."""
+    player1, player2 = two_players
+
+    with httpx.Client(timeout=10.0) as client:
+        resp = client.post(f"{gatewaypriv}/api/v1/trade/draft", json={
+            "order_id":            "not-a-valid-ulid",
+            "player_id":           player1,
+            "initiator_id":        player1,
+            "contracting_parties": [player1, player2],
+            "grants":              [],
+        })
+        assert resp.status_code == 400, f"expected 400, got {resp.status_code}: {resp.text}"

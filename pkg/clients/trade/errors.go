@@ -9,16 +9,19 @@ import (
 )
 
 var (
-	ErrInvalidRequest         = rmq.NewError("invalid_request", "failed to read request")
-	ErrFailedToCreateResponse = rmq.NewError("failed_to_create_response", "failed to create response")
-	ErrFailedToCreateTrade    = rmq.NewError("failed_to_create_trade", "failed to create trade")
-	ErrFailedToGetTradeStatus = rmq.NewError("failed_to_get_trade_status", "failed to get trade status")
-	ErrOrderNotFound          = rmq.NewError("order_not_found", "order not found")
-	ErrTradeConflict          = rmq.NewError("trade_conflict", "trade conflict")
-	ErrFailedToUpdateTrade    = rmq.NewError("failed_to_update_trade", "failed to update trade")
+	ErrInvalidRequest         = rmq.NewError(6000, "failed to read request")
+	ErrFailedToCreateResponse = rmq.NewError(6001, "failed to create response")
+	ErrFailedToCreateTrade    = rmq.NewError(6002, "failed to create trade")
+	ErrFailedToGetTradeStatus = rmq.NewError(6003, "failed to get trade status")
+	ErrOrderNotFound          = rmq.NewError(6004, "order not found")
+	ErrTradeConflict          = rmq.NewError(6005, "trade conflict")
+	ErrFailedToUpdateTrade    = rmq.NewError(6006, "failed to update trade")
 )
 
 func ConvertHttpError(err error) error {
+	if converted := rmq.ConvertHttpError(err); converted != nil {
+		return converted
+	}
 	switch {
 	case errors.Is(err, ErrInvalidRequest):
 		return echo.ErrBadRequest
