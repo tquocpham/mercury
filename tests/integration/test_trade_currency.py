@@ -56,7 +56,7 @@ def get_wallet(client: httpx.Client, gatewaypriv: str, player_id: str) -> dict:
 
 def create_trade(client: httpx.Client, gatewaypriv: str,
                  order_id: str, initiator_id: str, grants: list[dict]) -> dict:
-    resp = client.post(f"{gatewaypriv}/api/v1/trade/trade", json={
+    resp = client.post(f"{gatewaypriv}/api/v1/trade/dispatch", json={
         "order_id":     order_id,
         "initiator_id": initiator_id,
         "grants":       grants,

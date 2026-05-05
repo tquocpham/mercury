@@ -13,7 +13,7 @@ type TradeHandlers interface {
 	DraftTrade(c echo.Context) error
 	LockTrade(c echo.Context) error
 	UnlockTrade(c echo.Context) error
-	Trade(c echo.Context) error
+	DispatchGrants(c echo.Context) error
 	GetTradeStatus(c echo.Context) error
 }
 
@@ -75,13 +75,13 @@ func (h *tradeHandlers) UnlockTrade(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-func (h *tradeHandlers) Trade(c echo.Context) error {
+func (h *tradeHandlers) DispatchGrants(c echo.Context) error {
 	ctx := instrumentation.ToContext(c)
-	request := &trade.ExecuteTradeRequest{}
+	request := &trade.DispatchGrantsRequest{}
 	if err := json.NewDecoder(c.Request().Body).Decode(request); err != nil {
 		return echo.ErrBadRequest
 	}
-	response, err := h.tradeClient.ExecuteTrade(ctx, request.OrderID, request.InitiatorID, request.Grants)
+	response, err := h.tradeClient.DispatchGrants(ctx, request.OrderID, request.InitiatorID, request.Grants)
 	if err != nil {
 		return trade.ConvertHttpError(err)
 	}

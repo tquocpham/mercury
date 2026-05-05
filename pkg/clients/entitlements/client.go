@@ -77,6 +77,7 @@ type GrantRequest struct {
 	EntitlementID string `json:"entitlement_id"`
 	OrderID       string `json:"order_id"`
 	Version       int    `json:"version"`
+	ServerID      string `json:"server_id"`
 }
 
 type GrantResponse struct {

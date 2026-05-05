@@ -26,10 +26,30 @@ type Item struct {
 	Amount int    `json:"amount"`
 }
 
+type GetInventoryRequest struct {
+	PlayerID string `json:"player_id"`
+}
+
+type AddItemRequest struct {
+	PlayerID string `json:"player_id"`
+	ItemID   string `json:"item_id"`
+	Amount   int    `json:"amount"`
+	MaxStack int    `json:"max_stack"`
+	OrderID  string `json:"order_id"`
+}
+
+type AddItemToSlotRequest struct {
+	PlayerID string `json:"player_id"`
+	ItemID   string `json:"item_id"`
+	SlotID   int    `json:"slot_id"`
+	Amount   int    `json:"amount"`
+	MaxStack int    `json:"max_stack"`
+	OrderID  string `json:"order_id"`
+}
+
 type GetInventoryResponse struct {
 	PlayerID  string `json:"player_id"`
 	Inventory []Item `json:"inventory"`
-	CommitID  string `json:"commit_id"`
 }
 
 func (c *client) GetInventory() (*GetInventoryResponse, error) {
