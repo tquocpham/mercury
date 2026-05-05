@@ -66,6 +66,10 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		logger.WithError(err).Error("failed to parse grant request")
 		return nil, entitlements.ErrInvalidRequest
 	}
+	if request.ServerID == "" {
+		logger.Error("server_id must be a valid server id")
+		return nil, entitlements.ErrInvalidRequest
+	}
 	if !ids.ValidateOrderID(request.OrderID) {
 		logger.WithField("order_id", request.OrderID).Error("order_id must be a valid ULID")
 		return nil, entitlements.ErrInvalidRequest
@@ -101,7 +105,7 @@ func (h *grantHandlers) Grant(ctx context.Context, body []byte) ([]byte, error) 
 		return nil, entitlements.ErrFailedToGrantEntitlement
 	}
 
-	tradeResp, err := h.tradeClient.ExecuteTrade(ctx, request.OrderID, "system", grants)
+	tradeResp, err := h.tradeClient.DispatchGrants(ctx, request.OrderID, request.ServerID, grants)
 	if err != nil {
 		logger.WithError(err).Error("failed to submit trade for grant delivery")
 		return nil, entitlements.ErrFailedToGrantEntitlement

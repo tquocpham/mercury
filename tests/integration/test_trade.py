@@ -9,10 +9,14 @@ Requires: gatewaypriv + trade + MongoDB + RabbitMQ.
 Usage:
     pytest test_trade.py
 """
+import time
 import uuid
 import pytest
 import httpx
 from ulid import ULID
+
+POLL_INTERVAL = 1.0
+POLL_TIMEOUT  = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +66,47 @@ def unlock_trade(client: httpx.Client, gatewaypriv: str,
     })
     assert resp.status_code == 200, f"unlock_trade failed ({resp.status_code}): {resp.text}"
     return resp.json()
+
+
+def add_currency(client: httpx.Client, gatewaypriv: str,
+                 player_id: str, currency_id: str, amount: int, order_id: str) -> dict:
+    resp = client.post(f"{gatewaypriv}/api/v1/wallet/add_currency", json={
+        "player_id":   player_id,
+        "currency_id": currency_id,
+        "amount":      amount,
+        "order_id":    order_id,
+    })
+    assert resp.status_code == 200, f"add_currency failed ({resp.status_code}): {resp.text}"
+    return resp.json()
+
+
+def get_wallet(client: httpx.Client, gatewaypriv: str, player_id: str) -> dict:
+    resp = client.get(f"{gatewaypriv}/api/v1/wallet/wallet/{player_id}")
+    assert resp.status_code == 200, f"get_wallet failed ({resp.status_code}): {resp.text}"
+    return resp.json()
+
+
+def get_trade_status(client: httpx.Client, gatewaypriv: str, order_id: str) -> dict:
+    resp = client.get(f"{gatewaypriv}/api/v1/trade/status/{order_id}")
+    assert resp.status_code == 200, f"get_trade_status failed ({resp.status_code}): {resp.text}"
+    return resp.json()
+
+
+def wait_for_completed(client: httpx.Client, gatewaypriv: str, order_id: str) -> str:
+    deadline = time.monotonic() + POLL_TIMEOUT
+    while time.monotonic() < deadline:
+        status = get_trade_status(client, gatewaypriv, order_id)["status"]
+        if status in ("COMPLETED", "FAILED"):
+            return status
+        time.sleep(POLL_INTERVAL)
+    return "TIMEOUT"
+
+
+def currency_amount(wallet_resp: dict, currency_id: str) -> int:
+    for c in wallet_resp.get("currencies", []):
+        if c["currency_type"] == currency_id:
+            return c["amount"]
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -438,3 +483,52 @@ def test_draft_invalid_order_id(gatewaypriv, two_players):
             "grants":              [],
         })
         assert resp.status_code == 400, f"expected 400, got {resp.status_code}: {resp.text}"
+
+
+def test_bilateral_draft_trade_delivers_grants(gatewaypriv, two_players):
+    """
+    Full end-to-end: both players draft grants, both sign, tradecourier
+    delivers, and both wallets reflect the received currency.
+    """
+    player1, player2 = two_players
+
+    with httpx.Client(timeout=30.0) as client:
+        # Pre-fund both players
+        add_currency(client, gatewaypriv, player1, "gold", 1000, new_order_id())
+        add_currency(client, gatewaypriv, player2, "gems", 500,  new_order_id())
+
+        order_id = new_order_id()
+
+        # Player1 drafts: player2 receives 100 gold
+        resp1 = draft_trade(client, gatewaypriv, order_id, player1, player1,
+                            [player1, player2],
+                            grants=[
+                                {"player_id": player2, "type": "CURRENCY", "target_id": "gold", "amount": 100},
+                            ])
+
+        # Player2 drafts: player1 receives 50 gems
+        resp2 = draft_trade(client, gatewaypriv, order_id, player2, player1,
+                            [player1, player2],
+                            transaction_id=resp1["transaction_id"],
+                            grants=[
+                                {"player_id": player1, "type": "CURRENCY", "target_id": "gems", "amount": 50},
+                            ])
+
+        # Both players sign
+        lock_resp1 = lock_trade(client, gatewaypriv, order_id, player1, resp2["transaction_id"])
+        assert lock_resp1["status"] == "DRAFT"
+
+        lock_resp2 = lock_trade(client, gatewaypriv, order_id, player2, lock_resp1["transaction_id"])
+        assert lock_resp2["status"] == "PENDING"
+
+        # Wait for tradecourier to deliver
+        final_status = wait_for_completed(client, gatewaypriv, order_id)
+        assert final_status == "COMPLETED", f"trade did not complete — status: {final_status}"
+
+        # Verify player2 received gold
+        w2 = get_wallet(client, gatewaypriv, player2)
+        assert currency_amount(w2, "gold") == 100
+
+        # Verify player1 received gems
+        w1 = get_wallet(client, gatewaypriv, player1)
+        assert currency_amount(w1, "gems") == 50

@@ -17,7 +17,7 @@ type RMQHandlers interface {
 	DraftTrade(ctx context.Context, body []byte) ([]byte, error)
 	LockTrade(ctx context.Context, body []byte) ([]byte, error)
 	UnlockTrade(ctx context.Context, body []byte) ([]byte, error)
-	ExecuteTrade(ctx context.Context, body []byte) ([]byte, error)
+	DispatchGrants(ctx context.Context, body []byte) ([]byte, error)
 	TradeStatus(ctx context.Context, body []byte) ([]byte, error)
 }
 
@@ -197,11 +197,11 @@ func (h *rmqHanders) UnlockTrade(ctx context.Context, body []byte) ([]byte, erro
 	return bts, nil
 }
 
-func (h *rmqHanders) ExecuteTrade(ctx context.Context, body []byte) ([]byte, error) {
+func (h *rmqHanders) DispatchGrants(ctx context.Context, body []byte) ([]byte, error) {
 	logger := rmq.GetLogger(ctx)
-	request := &trade.ExecuteTradeRequest{}
+	request := &trade.DispatchGrantsRequest{}
 	if err := json.Unmarshal(body, request); err != nil {
-		logger.WithError(err).Error("Failed to parse execute trade request")
+		logger.WithError(err).Error("Failed to parse dispatch grants request")
 		return nil, trade.ErrInvalidRequest
 	}
 	if !ids.ValidateOrderID(request.OrderID) {

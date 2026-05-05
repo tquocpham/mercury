@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mercury/pkg/clients/trade"
+	"github.com/mercury/pkg/ids"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/smira/go-statsd"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -155,14 +156,25 @@ func (m *outboxManager) LockTrade(
 	}
 
 	if len(updated.Signatures) == len(updated.ContractingParties) {
+		var grants []trade.GrantItem
+		for _, playerGrants := range updated.GrantsByPlayer {
+			for _, g := range playerGrants {
+				g.OrderID = ids.NewOrderID()
+				grants = append(grants, g)
+			}
+		}
 		_, err = m.col.UpdateOne(ctx,
 			bson.M{"order_id": orderID, "commit_id": updated.CommitID},
-			bson.M{"$set": bson.M{"status": trade.OutboxStatusPending}},
+			bson.M{"$set": bson.M{
+				"status": trade.OutboxStatusPending,
+				"grants": grants,
+			}},
 		)
 		if err != nil {
 			return nil, err
 		}
 		updated.Status = trade.OutboxStatusPending
+		updated.Grants = grants
 	}
 
 	return &updated, nil

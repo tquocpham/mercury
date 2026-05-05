@@ -96,7 +96,7 @@ func main() {
 	tradev1.POST("/draft", tradeHandlers.DraftTrade)
 	tradev1.POST("/lock", tradeHandlers.LockTrade)
 	tradev1.POST("/unlock", tradeHandlers.UnlockTrade)
-	tradev1.POST("/trade", tradeHandlers.Trade)
+	tradev1.POST("/dispatch", tradeHandlers.DispatchGrants)
 	tradev1.GET("/status/:orderid", tradeHandlers.GetTradeStatus)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {

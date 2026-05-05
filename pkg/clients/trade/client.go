@@ -12,7 +12,7 @@ type RMQClient interface {
 	DraftTrade(ctx context.Context, orderID, playerID, initiatorID, transactionID string, contractingParties []string, grants []TradeGrant) (*DraftTradeResponse, error)
 	LockTrade(ctx context.Context, orderID, playerID, transactionID string) (*LockTradeResponse, error)
 	UnlockTrade(ctx context.Context, orderID, playerID, transactionID string) (*UnlockTradeResponse, error)
-	ExecuteTrade(ctx context.Context, orderID string, initiatorID string, grants []TradeGrant) (*TradeResponse, error)
+	DispatchGrants(ctx context.Context, orderID string, initiatorID string, grants []TradeGrant) (*TradeResponse, error)
 	TradeStatus(ctx context.Context, orderID string) (*TradeStatusResponse, error)
 }
 type rmqClient struct {
@@ -50,7 +50,7 @@ type TradeGrant struct {
 	Amount   int       `json:"amount"`
 }
 
-type ExecuteTradeRequest struct {
+type DispatchGrantsRequest struct {
 	OrderID     string       `json:"order_id"`
 	InitiatorID string       `json:"initiator_id"`
 	Grants      []TradeGrant `json:"grants"`
@@ -60,11 +60,11 @@ type TradeResponse struct {
 	OrderID string `json:"order_id"`
 }
 
-func (c *rmqClient) ExecuteTrade(
+func (c *rmqClient) DispatchGrants(
 	ctx context.Context, orderID string, initiatorID string,
 	grants []TradeGrant,
 ) (*TradeResponse, error) {
-	return rmq.Request[ExecuteTradeRequest, TradeResponse](ctx, c.publisher, "trade.v1.executetrade", ExecuteTradeRequest{
+	return rmq.Request[DispatchGrantsRequest, TradeResponse](ctx, c.publisher, "trade.v1.dispatchgrants", DispatchGrantsRequest{
 		OrderID:     orderID,
 		InitiatorID: initiatorID,
 		Grants:      grants,

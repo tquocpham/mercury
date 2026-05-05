@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/mercury/cmd/trade/lib/handlers"
-	"github.com/mercury/cmd/trade/lib/managers"
+	"github.com/mercury/cmd/inventory/lib/handlers"
+	"github.com/mercury/cmd/inventory/lib/managers"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/rmq"
@@ -16,9 +16,9 @@ func main() {
 		panic(err.Error())
 	}
 	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
-	logLevel := cfg.SetDefaultString("log_level", "info", true)
+	logLevel := cfg.SetDefaultString("log_level", "info", false)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	mongoAddr := cfg.SetDefaultString("mongo_addr", "mongodb://root:root@mongo:27017", true)
+	mongoAddr := cfg.SetDefaultString("mongo_addr", "mongodb://root:root@mongo:27017", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -27,37 +27,35 @@ func main() {
 		logrus.Fatal(err)
 	}
 	logger.SetLevel(level)
+	for k, v := range cfg.AllSettings() {
+		logger.WithFields(logrus.Fields{
+			"k": k,
+			"v": v,
+		}).Info("config")
+	}
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "trade")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "inventory")
 
-	outboxManager, err := managers.NewOutboxManager(mongoAddr, statsdClient)
+	inventoryManager, err := managers.NewInventoryManager(mongoAddr, statsdClient)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 
-	rmqHandlers := handlers.NewRMQHandlers(outboxManager)
+	rmqHandlers := handlers.NewRMQHandlers(inventoryManager)
 	consumer, err := rmq.NewConsumer(amqpURL, logger)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	defer consumer.Close()
-	consumer.Consume("trade.v1.drafttrade", rmqHandlers.DraftTrade,
+	consumer.Consume("inventory.v1.getinventory", rmqHandlers.GetInventory,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)
-	consumer.Consume("trade.v1.locktrade", rmqHandlers.LockTrade,
+	consumer.Consume("inventory.v1.additem", rmqHandlers.AddItem,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)
-	consumer.Consume("trade.v1.unlocktrade", rmqHandlers.UnlockTrade,
-		rmq.UseLogger(logger),
-		rmq.UseStatsd(statsdClient),
-	)
-	consumer.Consume("trade.v1.dispatchgrants", rmqHandlers.DispatchGrants,
-		rmq.UseLogger(logger),
-		rmq.UseStatsd(statsdClient),
-	)
-	consumer.Consume("trade.v1.status", rmqHandlers.TradeStatus,
+	consumer.Consume("inventory.v1.additemtoslot", rmqHandlers.AddItemToSlot,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),
 	)

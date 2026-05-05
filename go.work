@@ -1,11 +1,12 @@
 go 1.26.1
 
 use (
+	./cmd/archiver
 	./cmd/auth
-	./cmd/tradecourier
 	./cmd/entitlements
 	./cmd/gateway
 	./cmd/gatewaypriv
+	./cmd/inventory
 	./cmd/messages
 	./cmd/mmservice
 	./cmd/mmsolver
@@ -13,6 +14,7 @@ use (
 	./cmd/publisher
 	./cmd/subscriber
 	./cmd/trade
+	./cmd/tradecourier
 	./cmd/wallet
 	./pkg
 )
