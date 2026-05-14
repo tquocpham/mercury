@@ -1,7 +1,6 @@
 go 1.26.1
 
 use (
-	./cmd/archiver
 	./cmd/auth
 	./cmd/entitlements
 	./cmd/gateway
@@ -11,6 +10,7 @@ use (
 	./cmd/mmservice
 	./cmd/mmsolver
 	./cmd/msgworker
+	./cmd/portal
 	./cmd/publisher
 	./cmd/subscriber
 	./cmd/trade

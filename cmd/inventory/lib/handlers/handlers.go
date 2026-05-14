@@ -11,6 +11,7 @@ import (
 )
 
 type RMQHandlers interface {
+	CreateInventory(ctx context.Context, body []byte) ([]byte, error)
 	GetInventory(ctx context.Context, body []byte) ([]byte, error)
 	AddItem(ctx context.Context, body []byte) ([]byte, error)
 	AddItemToSlot(ctx context.Context, body []byte) ([]byte, error)
@@ -34,6 +35,29 @@ func slotsToItems(inv *managers.Inventory) []inventory.Item {
 		}
 	}
 	return items
+}
+
+func (h *rmqHanders) CreateInventory(ctx context.Context, body []byte) ([]byte, error) {
+	logger := rmq.GetLogger(ctx)
+	request := &inventory.GetInventoryRequest{}
+	if err := json.Unmarshal(body, request); err != nil {
+		logger.WithError(err).Error("failed to parse create inventory request")
+		return nil, inventory.ErrInvalidRequest
+	}
+
+	inv, err := h.inventoryManager.CreateInventory(ctx, request.PlayerID)
+	if err != nil {
+		return nil, inventory.ErrFailedToGetInventory
+	}
+
+	bts, err := json.Marshal(inventory.GetInventoryResponse{
+		PlayerID:  inv.PlayerID,
+		Inventory: slotsToItems(inv),
+	})
+	if err != nil {
+		return nil, inventory.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) GetInventory(ctx context.Context, body []byte) ([]byte, error) {
@@ -72,6 +96,9 @@ func (h *rmqHanders) AddItem(ctx context.Context, body []byte) ([]byte, error) {
 
 	inv, err := h.inventoryManager.AddItem(ctx, request.PlayerID, request.ItemID, request.OrderID, request.Amount, request.MaxStack)
 	if err != nil {
+		if errors.Is(err, managers.ErrInventoryNotFound) {
+			return nil, inventory.ErrInventoryDoesNotExist
+		}
 		if errors.Is(err, managers.ErrInventoryFull) {
 			return nil, inventory.ErrInventoryFull
 		}

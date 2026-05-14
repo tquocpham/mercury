@@ -17,6 +17,19 @@ var (
 	ErrSlotNotAvailable       = rmq.NewError(8006, "slot not available")
 )
 
+func ConvertRPCError(err error) error {
+	switch {
+	case errors.Is(err, ErrInventoryDoesNotExist):
+		return errors.New("inventory not found")
+	case errors.Is(err, ErrInventoryFull):
+		return errors.New("inventory full")
+	case errors.Is(err, ErrSlotNotAvailable):
+		return errors.New("slot not available")
+	default:
+		return errors.New("internal error")
+	}
+}
+
 func ConvertHttpError(err error) error {
 	if converted := rmq.ConvertHttpError(err); converted != nil {
 		return converted

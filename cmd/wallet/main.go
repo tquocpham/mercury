@@ -18,7 +18,7 @@ func main() {
 	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
 	logLevel := cfg.SetDefaultString("log_level", "info", false)
 	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	mongoAddr := cfg.SetDefaultString("mongo_addr", "mongodb://root:root@mongo:27017", false)
+	postgresDSN := cfg.SetDefaultString("postgres_dsn", "postgres://postgres:postgres@localhost:5432/mercury", false)
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
@@ -36,7 +36,7 @@ func main() {
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "wallet")
 
-	walletManager, err := managers.NewWalletManager(mongoAddr, statsdClient)
+	walletManager, err := managers.NewPostgresWalletManager(postgresDSN, statsdClient)
 	if err != nil {
 		logrus.Fatal(err)
 	}

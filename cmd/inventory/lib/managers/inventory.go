@@ -39,6 +39,7 @@ type Inventory struct {
 
 type InventoryManager interface {
 	GetInventory(ctx context.Context, playerID string) (*Inventory, error)
+	CreateInventory(ctx context.Context, playerID string) (*Inventory, error)
 	AddItem(ctx context.Context, playerID, itemID, orderID string, amount, maxStack int) (*Inventory, error)
 	AddItemToSlot(ctx context.Context, playerID, itemID, orderID string, slotID, amount, maxStack int) (*Inventory, error)
 	UnlockSlots(ctx context.Context, playerID string, count int) (*Inventory, error)
@@ -90,6 +91,31 @@ func (s *inventoryManager) GetInventory(ctx context.Context, playerID string) (_
 	return &inv, nil
 }
 
+func (s *inventoryManager) CreateInventory(ctx context.Context, playerID string) (_ *Inventory, err error) {
+	t := instrumentation.NewMetricsTimer(ctx, "invmgr.dur", statsd.StringTag("op", "create_inventory"))
+	defer func() { t.Done(err) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	_, err = s.inventory.UpdateOne(ctx,
+		bson.M{"player_id": playerID},
+		bson.M{"$setOnInsert": bson.M{
+			"player_id":      playerID,
+			"slots":          initialSlots(defaultUnlockedSlots),
+			"unlocked_slots": defaultUnlockedSlots,
+			"created_at":     now,
+			"updated_at":     now,
+		}},
+		options.UpdateOne().SetUpsert(true),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetInventory(ctx, playerID)
+}
+
 func (s *inventoryManager) AddItem(ctx context.Context, playerID, itemID, orderID string, amount, maxStack int) (_ *Inventory, err error) {
 	t := instrumentation.NewMetricsTimer(ctx, "invmgr.dur", statsd.StringTag("op", "add_item"))
 	defer func() { t.Done(err) }()
@@ -119,23 +145,6 @@ func (s *inventoryManager) AddItem(ctx context.Context, playerID, itemID, orderI
 			if mongo.IsDuplicateKeyError(err) {
 				return ErrDuplicateOrder
 			}
-			return err
-		}
-
-		// Ensure inventory exists with pre-allocated slots
-		_, err = s.inventory.UpdateOne(sessCtx,
-			bson.M{"player_id": playerID},
-			bson.M{"$setOnInsert": bson.M{
-				"player_id":      playerID,
-				"slots":          initialSlots(defaultUnlockedSlots),
-				"unlocked_slots": defaultUnlockedSlots,
-				"created_at":     time.Now(),
-				"updated_at":     time.Now(),
-			}},
-			options.UpdateOne().SetUpsert(true),
-		)
-		if err != nil {
-			session.AbortTransaction(sessCtx)
 			return err
 		}
 
@@ -177,6 +186,10 @@ func (s *inventoryManager) AddItem(ctx context.Context, playerID, itemID, orderI
 			).Decode(&inv)
 			if errors.Is(err, mongo.ErrNoDocuments) {
 				session.AbortTransaction(sessCtx)
+				var check Inventory
+				if cerr := s.inventory.FindOne(sessCtx, bson.M{"player_id": playerID}).Decode(&check); errors.Is(cerr, mongo.ErrNoDocuments) {
+					return ErrInventoryNotFound
+				}
 				return ErrInventoryFull
 			}
 			if err != nil {

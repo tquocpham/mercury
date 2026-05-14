@@ -126,6 +126,41 @@ services:
     volumes:
       - "./docker/data/cassandra:/var/lib/cassandra"
 
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: $POSTGRES_USER
+      POSTGRES_PASSWORD: $POSTGRES_PASSWORD
+      POSTGRES_DB: mercury
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d mercury"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - "./docker/data/postgres:/var/lib/postgresql/data"
+      - "./db:/docker-entrypoint-initdb.d:ro"
+
+  postgres-setup:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      PGPASSWORD: $POSTGRES_PASSWORD
+    volumes:
+      - "./db:/db:ro"
+    command: >
+      sh -c "
+        psql -h postgres -U $POSTGRES_USER -d mercury -f /db/01_inventory.sql &&
+        psql -h postgres -U $POSTGRES_USER -d mercury -f /db/02_wallet.sql
+      "
+
   redis:
     image: redis:7.4-alpine
     restart: always
@@ -327,10 +362,10 @@ services:
       LOG_LEVEL: debug
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
-      MONGO_ADDR: mongodb://root:root@mongo:27017
+      POSTGRES_DSN: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/mercury
       AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
-      - mongo
+      - postgres
       - rabbitmq
 
   tradecourier:
@@ -347,3 +382,35 @@ services:
     depends_on:
       - mongo
       - rabbitmq
+
+  inventory:
+    build:
+      context: .
+      dockerfile: cmd/inventory/Dockerfile
+    restart: always
+    environment:
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      MONGO_ADDR: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - mongo
+      - rabbitmq
+
+  portal:
+    build:
+      context: .
+      dockerfile: cmd/portal/Dockerfile
+    restart: always
+    ports:
+      - "9003:9003"
+    environment:
+      WEB_PORT: "9003"
+      LOG_LEVEL: debug
+      STATSD_ADDR: telegraf:8125
+      ENVIRONMENT: docker
+      AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
+    depends_on:
+      - rabbitmq
+

@@ -70,3 +70,13 @@ func NewMetricsTimer(ctx context.Context, name string, tags ...statsd.Tag) Timer
 		tags:    tags,
 	}
 }
+
+func NewStatsdTimer(metrics *statsd.Client, name string, tags ...statsd.Tag) Timer {
+	start := time.Now()
+	return &metrcstimer{
+		name:    name,
+		start:   start,
+		metrics: metrics,
+		tags:    tags,
+	}
+}
