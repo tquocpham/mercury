@@ -11,12 +11,10 @@ import (
 	"github.com/mercury/pkg/ids"
 )
 
-// --- mock ---
-
 type mockWalletManager struct {
-	wallet    *managers.Wallet
-	grantErr  error
-	getErr    error
+	wallet   *managers.Wallet
+	grantErr error
+	getErr   error
 }
 
 func (m *mockWalletManager) GetWallet(_ context.Context, playerID string) (*managers.Wallet, error) {
@@ -39,8 +37,6 @@ func (m *mockWalletManager) Grant(_ context.Context, playerID, _ string, _ int, 
 	return &managers.Wallet{PlayerID: playerID, Currencies: map[string]int{}}, nil
 }
 
-// --- helpers ---
-
 func newHandlers(mgr managers.WalletManager) RMQHandlers {
 	return NewRMQHandlers(mgr)
 }
@@ -57,8 +53,6 @@ func marshalJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
-
-// --- convertDBCurrencyToRMQCurrency ---
 
 func TestConvertDBCurrencyToRMQCurrency_empty(t *testing.T) {
 	result := convertDBCurrencyToRMQCurrency(map[string]int{})
@@ -83,8 +77,6 @@ func TestConvertDBCurrencyToRMQCurrency_mapsCorrectly(t *testing.T) {
 		t.Errorf("expected gems=5, got %d", seen["gems"])
 	}
 }
-
-// --- AddCurrency ---
 
 func TestAddCurrency_invalidJSON_returnsErrInvalidRequest(t *testing.T) {
 	h := newHandlers(&mockWalletManager{})
@@ -151,8 +143,6 @@ func TestAddCurrency_success_returnsWalletResponse(t *testing.T) {
 		t.Errorf("unexpected currencies: %v", got.Currencies)
 	}
 }
-
-// --- GetWallet ---
 
 func TestGetWallet_invalidJSON_returnsErrInvalidRequest(t *testing.T) {
 	h := newHandlers(&mockWalletManager{})

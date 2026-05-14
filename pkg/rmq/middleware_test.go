@@ -9,8 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// --- context helpers ---
-
 func TestNewRequestID_missingKeyReturnsEmpty(t *testing.T) {
 	if id := NewRequestID(context.Background()); id != "" {
 		t.Fatalf("expected empty string, got %q", id)
@@ -48,8 +46,6 @@ func TestGetMetrics_missingKeyReturnsNoop(t *testing.T) {
 	// Verify noop client doesn't panic on use.
 	client.Incr("test", 1)
 }
-
-// --- UseLogger middleware ---
 
 func newBufLogger() (*logrus.Logger, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
@@ -123,8 +119,6 @@ func TestUseLogger_logsQueueName(t *testing.T) {
 	}
 }
 
-// --- UseStatsd middleware ---
-
 func TestUseStatsd_callsNextAndReturnsResult(t *testing.T) {
 	// Use the noop client so no real UDP socket is needed.
 	client := GetMetrics(context.Background())
@@ -177,8 +171,6 @@ func TestUseStatsd_injectsClientIntoContext(t *testing.T) {
 		t.Error("expected statsd client to be injected into context")
 	}
 }
-
-// --- middleware chaining order ---
 
 func TestMiddlewareChaining_outerToInner(t *testing.T) {
 	// Verify the order matches what Consumer.Consume does:

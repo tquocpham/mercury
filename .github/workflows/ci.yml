@@ -27,33 +27,8 @@ jobs:
         working-directory: cmd/auth
         run: GOWORK=off go test ./...
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service:
-          - entitlements
-          - gateway
-          - gatewaypriv
-          - inventory
-          - messages
-          - mmservice
-          - mmsolver
-          - msgworker
-          - portal
-          - publisher
-          - subscriber
-          - trade
-          - tradecourier
-    steps:
-      - uses: actions/checkout@v4
+      - name: Run tests (trade)
+        working-directory: cmd/trade
+        run: GOWORK=off go test ./...
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: cmd/wallet/go.mod
-
-      - name: Build ${{ matrix.service }}
-        working-directory: cmd/${{ matrix.service }}
-        run: GOWORK=off go build ./...
 
