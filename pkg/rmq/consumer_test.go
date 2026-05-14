@@ -13,8 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// --- mocks ---
-
 type mockAck struct {
 	mu     sync.Mutex
 	acked  bool
@@ -119,8 +117,6 @@ func (m *mockConn) wasCloseCalled() bool {
 	return m.closeCalled
 }
 
-// --- helpers ---
-
 func newTestConsumer(conn amqpConnection) *Consumer {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
@@ -154,8 +150,6 @@ func waitFor(t *testing.T, condition func() bool) {
 	t.Fatal("condition not met within timeout")
 }
 
-// --- Healthy ---
-
 func TestHealthy_nilConn(t *testing.T) {
 	c := newTestConsumer(nil)
 	c.conn = nil
@@ -178,8 +172,6 @@ func TestHealthy_openConn(t *testing.T) {
 	}
 }
 
-// --- Close ---
-
 func TestClose_nilConn_noPanic(t *testing.T) {
 	c := newTestConsumer(nil)
 	c.conn = nil
@@ -194,8 +186,6 @@ func TestClose_callsConnClose(t *testing.T) {
 		t.Fatal("expected conn.Close() to be called")
 	}
 }
-
-// --- newChannel ---
 
 func TestNewChannel_nilConn_returnsError(t *testing.T) {
 	c := newTestConsumer(nil)
@@ -232,8 +222,6 @@ func TestNewChannel_success_returnsChannel(t *testing.T) {
 		t.Fatal("expected non-nil channel")
 	}
 }
-
-// --- Consume: message dispatch ---
 
 func TestConsume_successNoReplyTo_acks(t *testing.T) {
 	conn, ch := newMockSetup()

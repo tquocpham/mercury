@@ -10,8 +10,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// --- Error type ---
-
 func TestNewError_setsFieldsCorrectly(t *testing.T) {
 	err := NewError(404, "not found")
 	if err.Code != 404 {
@@ -59,8 +57,6 @@ func TestError_Is_worksAfterWrapping(t *testing.T) {
 	}
 }
 
-// --- ConvertHttpError ---
-
 func TestConvertHttpError_nonRMQErrorReturnsNil(t *testing.T) {
 	if got := ConvertHttpError(errors.New("plain error")); got != nil {
 		t.Fatalf("expected nil, got %v", got)
@@ -97,8 +93,6 @@ func TestConvertHttpError_otherSystemCodeMapsTo500(t *testing.T) {
 		t.Fatalf("expected 500, got %d", he.Code)
 	}
 }
-
-// --- envelope helpers ---
 
 func TestWrapSuccess_roundTrip(t *testing.T) {
 	payload := []byte(`{"key":"value"}`)
