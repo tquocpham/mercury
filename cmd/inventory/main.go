@@ -47,6 +47,10 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer consumer.Close()
+	consumer.Consume("inventory.v1.createinventory", rmqHandlers.CreateInventory,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
 	consumer.Consume("inventory.v1.getinventory", rmqHandlers.GetInventory,
 		rmq.UseLogger(logger),
 		rmq.UseStatsd(statsdClient),

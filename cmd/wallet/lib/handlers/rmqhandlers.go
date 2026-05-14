@@ -9,7 +9,6 @@ import (
 	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/ids"
 	"github.com/mercury/pkg/rmq"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 func convertDBCurrencyToRMQCurrency(dbcurr map[string]int) []wallet.Currency {
@@ -54,6 +53,7 @@ func (h *rmqHanders) AddCurrency(ctx context.Context, body []byte) ([]byte, erro
 		ctx, request.PlayerID, request.CurrencyID,
 		request.Amount, request.OrderID)
 	if err != nil {
+		logger.WithError(err).Error("failed to grant currency")
 		return nil, wallet.ErrFailedToGrantCurrency
 	}
 
@@ -76,9 +76,10 @@ func (h *rmqHanders) GetWallet(ctx context.Context, body []byte) ([]byte, error)
 	}
 	walletInfo, err := h.walletManager.GetWallet(ctx, request.PlayerID)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
+		if errors.Is(err, managers.ErrWalletNotFound) {
 			return nil, wallet.ErrWalletDoesNotExist
 		}
+		logger.WithError(err).Error("failed to get wallet")
 		return nil, wallet.ErrFailedToGetWallet
 	}
 	bts, err := json.Marshal(wallet.GetWalletResponse{

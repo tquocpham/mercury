@@ -12,6 +12,9 @@ docker_compose("docker-compose.yml")
 infra = [
     "rabbitmq",
     "mongo",
+    "mongo-setup",
+    "postgres",
+    "postgres-setup",
     "redis",
     "influxdb",
     "telegraf",
@@ -41,6 +44,8 @@ services = [
     "trade",
     "wallet",
     "tradecourier",
+    "inventory",
+    "portal",
 ]
 
 for svc in services:
@@ -63,6 +68,8 @@ go_services = [
     ("trade",       "cmd/trade"),
     ("wallet",      "cmd/wallet"),
     ("tradecourier", "cmd/tradecourier"),
+    ("inventory",    "cmd/inventory"),
+    ("portal",       "cmd/portal"),
 ]
 
 for svc, path in go_services:

@@ -3,6 +3,8 @@ import pytest
 import pymongo
 import yaml
 
+pytest_plugins = ("pytest_asyncio",)
+
 _default_config = os.path.join(os.path.dirname(__file__), "config.yaml")
 CONFIG_PATH = os.environ.get("INTEGRATION_CONFIG") or _default_config
 
@@ -31,6 +33,11 @@ def subscriber(config):
 @pytest.fixture(scope="session")
 def mongo_url(config):
     return config["mongo_url"]
+
+
+@pytest.fixture(scope="session")
+def portal_ws_url(config):
+    return config["portal_ws_url"]
 
 
 @pytest.fixture(scope="session")

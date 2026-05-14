@@ -101,7 +101,7 @@ func (c *courier) processBatch(ctx context.Context, logger *logrus.Entry) (bool,
 				ctx, grant.PlayerID, grant.TargetID, grant.Amount, grant.OrderID)
 		case trade.GrantTypeItem, trade.GrantTypeEntitlement:
 			_, grantErr = c.inventoryClient.AddItem(
-				grant.PlayerID, grant.TargetID, grant.Amount, grant.OrderID)
+				ctx, grant.PlayerID, grant.TargetID, grant.OrderID, grant.Amount, 250)
 		default:
 			logger.WithFields(logrus.Fields{
 				"grant_type": grant.Type,
