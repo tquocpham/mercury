@@ -9,6 +9,7 @@ import (
 	"github.com/smira/go-statsd"
 )
 
+
 func Request[Req any, Resp any](ctx context.Context, p *Publisher, route string, req Req) (_ *Resp, err error) {
 	metricsname := fmt.Sprintf("rmq.%s", route)
 	t := instrumentation.NewMetricsTimer(ctx, metricsname, statsd.StringTag("r", route))

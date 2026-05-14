@@ -78,10 +78,14 @@ func (h *rmqHanders) GetMessages(ctx context.Context, body []byte) ([]byte, erro
 	if len(msgHistory.Next) > 0 {
 		respNextToken = base64.StdEncoding.EncodeToString(msgHistory.Next)
 	}
-	return json.Marshal(messages.GetMessagesResponse{
+	bts, err := json.Marshal(messages.GetMessagesResponse{
 		Messages:  msgs,
 		NextToken: respNextToken,
 	})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) SendMessage(ctx context.Context, body []byte) ([]byte, error) {
@@ -119,10 +123,14 @@ func (h *rmqHanders) SendMessage(ctx context.Context, body []byte) ([]byte, erro
 		logger.WithError(err).Error("failed to send chat message")
 		return nil, messages.ErrFailedToSendMessage
 	}
-	return json.Marshal(messages.SendMessageResponse{
+	bts, err := json.Marshal(messages.SendMessageResponse{
 		Status:    "queued",
 		MessageID: msgID,
 	})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) RefreshMessages(ctx context.Context, body []byte) ([]byte, error) {
@@ -148,7 +156,11 @@ func (h *rmqHanders) RefreshMessages(ctx context.Context, body []byte) ([]byte, 
 		}
 	}
 
-	return json.Marshal(messages.RefreshMessagesResponse{
+	bts, err := json.Marshal(messages.RefreshMessagesResponse{
 		Messages: msgs,
 	})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }

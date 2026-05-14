@@ -20,6 +20,7 @@ var (
 	ErrNoSessionFound          = rmq.NewError(1008, "failed to find session")
 	ErrSessionExtensionFailed  = rmq.NewError(1009, "failed to extend session")
 	ErrSessionDeletionFailed   = rmq.NewError(1010, "failed to delete session")
+	ErrFailedToCreateResponse  = rmq.NewError(1011, "failed to create response")
 )
 
 func ConvertHttpError(err error) error {
@@ -33,15 +34,6 @@ func ConvertHttpError(err error) error {
 		return echo.ErrUnauthorized
 	case errors.Is(err, ErrAccountDuplicate):
 		return echo.NewHTTPError(http.StatusConflict)
-	case errors.Is(err, ErrAccountCreationFailed),
-		errors.Is(err, ErrFailedToQueryAccount),
-		errors.Is(err, ErrSessionCreationFailed),
-		errors.Is(err, ErrTokenSignatureFailed),
-		errors.Is(err, ErrNoSessionFound),
-		errors.Is(err, ErrSessionExtensionFailed),
-		errors.Is(err, ErrSessionDeletionFailed),
-		errors.Is(err, ErrAccountActivationFailed):
-		return echo.ErrInternalServerError
 	default:
 		return echo.ErrInternalServerError
 	}

@@ -20,8 +20,8 @@ def test_user(gateway, mongo_client):
 
     with httpx.Client(timeout=10.0) as client:
         resp = client.post(f"{gateway}/api/v1/account", json={
-            "username": username, 
-            "email": email, 
+            "username": username,
+            "email": email,
             "password": password,
         })
         assert resp.status_code == 200, f"account creation failed: {resp.text}"

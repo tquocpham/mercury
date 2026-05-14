@@ -29,8 +29,8 @@ type CatalogManager interface {
 		metadata map[string]any,
 		gameProperties map[string]any,
 		tags []string,
-		behavior entitlements.CatalogItemBehavior,
-		grantResults []entitlements.CatalogGrantResult,
+		behavior CatalogItemBehavior,
+		grantResults []CatalogGrantResult,
 		requirements []string,
 	) (_ *Entitlement, err error)
 }
@@ -116,8 +116,8 @@ func (u *catalogManager) CreateEntitlement(
 	metadata map[string]any,
 	gameProperties map[string]any,
 	tags []string,
-	behavior entitlements.CatalogItemBehavior,
-	grantResults []entitlements.CatalogGrantResult,
+	behavior CatalogItemBehavior,
+	grantResults []CatalogGrantResult,
 	requirements []string,
 ) (_ *Entitlement, err error) {
 

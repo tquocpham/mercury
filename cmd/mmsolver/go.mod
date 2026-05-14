@@ -9,6 +9,7 @@ require (
 	github.com/mercury/pkg v0.0.0-00010101000000-000000000000
 	github.com/sirupsen/logrus v1.9.4
 	github.com/smira/go-statsd v1.3.4
+	go.mongodb.org/mongo-driver/v2 v2.5.0
 )
 
 require (

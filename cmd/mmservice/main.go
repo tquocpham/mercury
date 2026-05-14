@@ -2,9 +2,9 @@ package main
 
 import (
 	"github.com/mercury/cmd/mmservice/lib/handlers"
+	"github.com/mercury/cmd/mmservice/lib/managers"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/config"
-	"github.com/mercury/pkg/matchmaking/managers"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/rmq"
 	"github.com/sirupsen/logrus"

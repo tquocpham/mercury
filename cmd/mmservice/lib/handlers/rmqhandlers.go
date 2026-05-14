@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/mercury/cmd/mmservice/lib/managers"
 	"github.com/mercury/pkg/clients/matchmaking"
-	"github.com/mercury/pkg/matchmaking/managers"
+	"github.com/mercury/pkg/clients/messages"
 	"github.com/mercury/pkg/rmq"
 )
 
@@ -39,9 +40,13 @@ func (h *rmqHanders) UserJoinQueue(ctx context.Context, body []byte) ([]byte, er
 		logger.WithError(err).Error("Failed to queue matchmaking party")
 		return nil, matchmaking.ErrFailedToQueueParty
 	}
-	return json.Marshal(matchmaking.MatchmakingQueueResponse{
+	bts, err := json.Marshal(matchmaking.MatchmakingQueueResponse{
 		PartyID: queueID,
 	})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) GetQueue(ctx context.Context, body []byte) ([]byte, error) {
@@ -56,7 +61,7 @@ func (h *rmqHanders) GetQueue(ctx context.Context, body []byte) ([]byte, error) 
 		logger.WithError(err).Error("Failed to queue matchmaking party")
 		return nil, matchmaking.ErrFailedToQueueParty
 	}
-	return json.Marshal(matchmaking.GetQueueResponse{
+	bts, err := json.Marshal(matchmaking.GetQueueResponse{
 		PartyID:          queue.PartyID,
 		PlayerIDs:        queue.PlayerIDs,
 		AssignedServerID: queue.AssignedServerID,
@@ -64,6 +69,10 @@ func (h *rmqHanders) GetQueue(ctx context.Context, body []byte) ([]byte, error) 
 		Status:           string(queue.Status),
 		Version:          queue.Version,
 	})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) UserJoinDequeue(ctx context.Context, body []byte) ([]byte, error) {
@@ -82,7 +91,11 @@ func (h *rmqHanders) GameserverRegister(ctx context.Context, body []byte) ([]byt
 		logger.WithError(err).Error("Failed to register game server")
 		return nil, matchmaking.ErrFailedToRegisterGameserver
 	}
-	return json.Marshal(matchmaking.GSRegisterResponse{})
+	bts, err := json.Marshal(matchmaking.GSRegisterResponse{})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
 
 func (h *rmqHanders) GameserverUnregister(ctx context.Context, body []byte) ([]byte, error) {
@@ -92,10 +105,14 @@ func (h *rmqHanders) GameserverUnregister(ctx context.Context, body []byte) ([]b
 		logger.WithError(err).Error("Failed to parse gameserver unregister request")
 		return nil, matchmaking.ErrInvalidRequest
 	}
-	err := h.mmManager.UpdateServerState(ctx, request.ServerID, request.Version, managers.Draining)
+	err := h.mmManager.UpdateServerState(ctx, request.ServerID, request.Version, matchmaking.Draining)
 	if err != nil {
 		logger.WithError(err).Error("Failed to unregister game server")
 		return nil, matchmaking.ErrFailedToRegisterGameserver
 	}
-	return json.Marshal(matchmaking.GSUnregisterResponse{})
+	bts, err := json.Marshal(matchmaking.GSUnregisterResponse{})
+	if err != nil {
+		return nil, messages.ErrFailedToCreateResponse
+	}
+	return bts, nil
 }
