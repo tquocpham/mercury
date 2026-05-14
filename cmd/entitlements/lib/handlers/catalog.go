@@ -31,6 +31,19 @@ func (h *catalogHandlers) AddItems(ctx context.Context, body []byte) ([]byte, er
 	if err := json.Unmarshal(body, request); err != nil {
 		return nil, entitlements.ErrInvalidRequest
 	}
+	grantResults := make([]managers.CatalogGrantResult, len(request.Item.GrantResults))
+	for i, gr := range request.Item.GrantResults {
+		grantResults[i] = managers.CatalogGrantResult{
+			GrantType: gr.GrantType,
+			TargetID:  gr.TargetID,
+			Amount:    gr.Amount,
+		}
+	}
+	behavior := managers.CatalogItemBehavior{
+		IsTradable: request.Item.Behavior.IsTradable,
+		IsGiftable: request.Item.Behavior.IsGiftable,
+		MaxStack:   request.Item.Behavior.MaxStack,
+	}
 	entitlement, err := h.catalogManager.CreateEntitlement(
 		ctx,
 		request.Item.CatalogItemID,
@@ -41,8 +54,8 @@ func (h *catalogHandlers) AddItems(ctx context.Context, body []byte) ([]byte, er
 		request.Item.Metadata,
 		request.Item.GameProperties,
 		request.Item.Tags,
-		request.Item.Behavior,
-		request.Item.GrantResults,
+		behavior,
+		grantResults,
 		request.Item.Requirements,
 	)
 	if err != nil {
