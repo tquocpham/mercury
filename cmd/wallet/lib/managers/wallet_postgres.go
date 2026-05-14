@@ -2,12 +2,25 @@ package managers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mercury/pkg/instrumentation"
 	"github.com/smira/go-statsd"
 )
+
+var ErrWalletNotFound = errors.New("wallet not found")
+
+type Wallet struct {
+	PlayerID   string
+	Currencies map[string]int
+}
+
+type WalletManager interface {
+	GetWallet(ctx context.Context, playerID string) (*Wallet, error)
+	Grant(ctx context.Context, playerID, currencyID string, amount int, orderID string) (*Wallet, error)
+}
 
 type postgresWalletManager struct {
 	pool         *pgxpool.Pool

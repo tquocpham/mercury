@@ -13,8 +13,47 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: cmd/auth/go.mod
+          go-version-file: cmd/wallet/go.mod
+
+      - name: Run tests (pkg)
+        working-directory: pkg
+        run: GOWORK=off go test ./...
+
+      - name: Run tests (wallet)
+        working-directory: cmd/wallet
+        run: GOWORK=off go test ./...
 
       - name: Run tests (auth)
         working-directory: cmd/auth
-        run: go test ./...
+        run: GOWORK=off go test ./...
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - entitlements
+          - gateway
+          - gatewaypriv
+          - inventory
+          - messages
+          - mmservice
+          - mmsolver
+          - msgworker
+          - portal
+          - publisher
+          - subscriber
+          - trade
+          - tradecourier
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cmd/wallet/go.mod
+
+      - name: Build ${{ matrix.service }}
+        working-directory: cmd/${{ matrix.service }}
+        run: GOWORK=off go build ./...
+

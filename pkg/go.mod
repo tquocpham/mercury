@@ -18,7 +18,6 @@ require (
 	github.com/smira/go-statsd v1.3.4
 	github.com/spf13/viper v1.21.0
 	go.mongodb.org/mongo-driver v1.17.9
-	go.mongodb.org/mongo-driver/v2 v2.6.0
 	google.golang.org/protobuf v1.36.11
 )
 

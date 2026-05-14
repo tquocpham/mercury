@@ -381,11 +381,6 @@ services:
     networks:
       - private
 
-networks:
-  public:
-  private:
-    internal: true
-
   trade:
     build:
       context: .
@@ -400,6 +395,8 @@ networks:
     depends_on:
       - mongo
       - rabbitmq
+    networks:
+      - private
 
   wallet:
     build:
@@ -415,6 +412,8 @@ networks:
     depends_on:
       - postgres
       - rabbitmq
+    networks:
+      - private
 
   tradecourier:
     build:
@@ -430,6 +429,8 @@ networks:
     depends_on:
       - mongo
       - rabbitmq
+    networks:
+      - private
 
   inventory:
     build:
@@ -440,11 +441,13 @@ networks:
       LOG_LEVEL: debug
       STATSD_ADDR: telegraf:8125
       ENVIRONMENT: docker
-      MONGO_ADDR: mongodb://root:root@mongo:27017
+      POSTGRES_DSN: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/mercury
       AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
-      - mongo
+      - postgres
       - rabbitmq
+    networks:
+      - private
 
   portal:
     build:
@@ -461,4 +464,12 @@ networks:
       AMQP_URL: amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@rabbitmq:5672/
     depends_on:
       - rabbitmq
+    networks:
+      - public
+      - private
+
+networks:
+  public:
+  private:
+    internal: true
 

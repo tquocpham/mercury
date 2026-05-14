@@ -17,15 +17,36 @@ import (
 
 type Handler func(ctx context.Context, body []byte) ([]byte, error)
 
+type amqpChannel interface {
+	QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error)
+	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
+	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+	Close() error
+}
+
+type amqpConnection interface {
+	Close() error
+	IsClosed() bool
+	Channel() (amqpChannel, error)
+}
+
+// realConn wraps *amqp.Connection so Channel() satisfies amqpConnection.
+type realConn struct{ *amqp.Connection }
+
+func (r *realConn) Channel() (amqpChannel, error) { return r.Connection.Channel() }
+
 type Consumer struct {
 	amqpURL string
-	conn    *amqp.Connection
+	conn    amqpConnection
 	mu      sync.Mutex
 	logger  *logrus.Logger
 }
 
 func NewConsumer(amqpURL string, logger *logrus.Logger) (*Consumer, error) {
-	c := &Consumer{amqpURL: amqpURL, logger: logger}
+	c := &Consumer{
+		amqpURL: amqpURL,
+		logger:  logger,
+	}
 	if err := c.connect(); err != nil {
 		return nil, err
 	}
@@ -43,11 +64,11 @@ func (c *Consumer) connect() error {
 	if err != nil {
 		return err
 	}
-	c.conn = conn
+	c.conn = &realConn{conn}
 	return nil
 }
 
-func (c *Consumer) newChannel() (*amqp.Channel, error) {
+func (c *Consumer) newChannel() (amqpChannel, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil || c.conn.IsClosed() {
@@ -141,7 +162,7 @@ func (c *Consumer) Consume(queue string, handler Handler, middlewares ...Middlew
 	}()
 }
 
-func (c *Consumer) startConsuming(queue string) (*amqp.Channel, <-chan amqp.Delivery, error) {
+func (c *Consumer) startConsuming(queue string) (amqpChannel, <-chan amqp.Delivery, error) {
 	ch, err := c.newChannel()
 	if err != nil {
 		return nil, nil, err
