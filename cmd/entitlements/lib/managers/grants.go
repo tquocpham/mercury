@@ -16,8 +16,8 @@ import (
 var ErrDuplicateGrant = errors.New("entitlementid and accountid already created")
 
 type GrantsManager interface {
-	Grant(
-		ctx context.Context, accountID, entitlementID string, entVersion int, unique bool) (_ *Grant, err error)
+	CreateGrant(
+		ctx context.Context, accountID, entitlementID, orderID string, entVersion int) (_ *Grant, err error)
 	Update(ctx context.Context, accountID string, entitlementID string) (_ *Grant, err error)
 }
 
@@ -47,58 +47,51 @@ const (
 )
 
 type Grant struct {
-	ID                 string                 `bson:"_id"`
-	EntitlementID      string                 `bson:"entitlement_id"`
-	EntitlementVersion int                    `bson:"entitlement_version"`
-	CommitID           string                 `bson:"commit_id"` // idempotency
-	Count              int                    `bson:"count"`
-	AccountID          string                 `bson:"account_id"`
-	State              GrantState             `bson:"state"`
-	GrantedAt          time.Time              `bson:"granted_at"`
-	RevokedAt          time.Time              `bson:"revoked_at"`
-	ExpiresAt          time.Time              `bson:"expires_at"`
-	Metadata           map[string]any         `bson:"metadata,omitempty"`
+	ID                 string         `bson:"_id"`
+	OrderID            string         `bson:"order_id"`
+	EntitlementID      string         `bson:"entitlement_id"`
+	EntitlementVersion int            `bson:"entitlement_version"`
+	Count              int            `bson:"count"`
+	AccountID          string         `bson:"account_id"`
+	State              GrantState     `bson:"state"`
+	GrantedAt          time.Time      `bson:"granted_at"`
+	RevokedAt          time.Time      `bson:"revoked_at"`
+	ExpiresAt          time.Time      `bson:"expires_at"`
+	Metadata           map[string]any `bson:"metadata,omitempty"`
 }
 
-func (u *grantsManager) Grant(
-	ctx context.Context, accountID, entitlementID string, entVersion int, unique bool) (_ *Grant, err error) {
+func (u *grantsManager) CreateGrant(
+	ctx context.Context, accountID, entitlementID, orderID string,
+	entVersion int,
+) (_ *Grant, err error) {
+
 	t := instrumentation.NewMetricsTimer(ctx, "grntmgr.dur", statsd.StringTag("op", "grant"))
 	defer func() { t.Done(err) }()
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// Design choice of loose coupling with accounts for now.
-	// If accounts/auth service is down we don't want to block entitlements unnecessarily.
-
-	if unique {
-		var existing Grant
-		findErr := u.col.FindOne(ctx, bson.M{
-			"account_id":     accountID,
-			"entitlement_id": entitlementID,
-		}).Decode(&existing)
-		if findErr == nil {
-			return nil, ErrDuplicateGrant
-		}
-		if !errors.Is(findErr, mongo.ErrNoDocuments) {
-			return nil, findErr
-		}
-	}
-
-	grant := &Grant{
-		ID:                 uuid.New().String(),
-		EntitlementID:      entitlementID,
-		EntitlementVersion: entVersion,
-		AccountID:          accountID,
-		State:              EntitlementStateActive,
-	}
-
-	_, err = u.col.InsertOne(ctx, grant)
+	// Atomic upsert — $setOnInsert only writes on insert, so concurrent retries
+	// with the same orderID will all get back the same grant document.
+	var grant Grant
+	err = u.col.FindOneAndUpdate(ctx,
+		bson.M{"order_id": orderID},
+		bson.M{"$setOnInsert": bson.M{
+			"_id":                 uuid.New().String(),
+			"order_id":            orderID,
+			"entitlement_id":      entitlementID,
+			"entitlement_version": entVersion,
+			"account_id":          accountID,
+			"state":               EntitlementStateActive,
+			"granted_at":          time.Now(),
+		}},
+		options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After),
+	).Decode(&grant)
 	if err != nil {
 		return nil, err
 	}
 
-	return grant, nil
+	return &grant, nil
 }
 
 func (u *grantsManager) Update(ctx context.Context, accountID string, entitlementID string) (_ *Grant, err error) {

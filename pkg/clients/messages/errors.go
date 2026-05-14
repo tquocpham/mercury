@@ -9,15 +9,17 @@ import (
 )
 
 var (
-	ErrInvalidRequest         = rmq.NewError(2001, "failed to read request")
-	ErrFailedToCreateResponse = rmq.NewError(2002, "failed to create response")
-	ErrFailedToSendMessage    = rmq.NewError(2003, "failed to send message")
-	ErrInvalidNextToken       = rmq.NewError(2004, "invalid next token")
-	ErrFailedToGetMessages    = rmq.NewError(2005, "failed to get messages")
-	ErrTooManyMessages        = rmq.NewError(2006, "too many messages")
+	ErrInvalidRequest      = rmq.NewError(2000, "failed to read request")
+	ErrFailedToSendMessage = rmq.NewError(2001, "failed to send message")
+	ErrInvalidNextToken    = rmq.NewError(2002, "invalid next token")
+	ErrFailedToGetMessages = rmq.NewError(2003, "failed to get messages")
+	ErrTooManyMessages     = rmq.NewError(2004, "too many messages")
 )
 
 func ConvertHttpError(err error) error {
+	if converted := rmq.ConvertHttpError(err); converted != nil {
+		return converted
+	}
 	switch {
 	case errors.Is(err, ErrInvalidRequest),
 		errors.Is(err, ErrInvalidNextToken):

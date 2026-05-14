@@ -42,7 +42,7 @@ func main() {
 	}
 	defer cassClient.Close()
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "query")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "messages")
 
 	brokers := []string{broker}
 	producer := kmq.NewProducer(brokers)

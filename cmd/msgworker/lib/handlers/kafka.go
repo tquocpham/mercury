@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	"github.com/mercury/cmd/worker/lib/managers"
+	"github.com/mercury/cmd/msgworker/lib/managers"
 	"github.com/mercury/pkg/clients/publisher"
 	"github.com/mercury/pkg/clients/worker"
 	"github.com/mercury/pkg/kmq"

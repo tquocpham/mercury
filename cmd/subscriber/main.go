@@ -79,7 +79,7 @@ func main() {
 	// TODO: intergrate this with statsd. The statsd middleware currently times connection latency
 	// assuming brief http connections Websockets are long lived so we need to measure it differently.
 	// statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
-	// statsdClient := middleware.NewStatsdClient(statsdAddr, "websocket")
+	// statsdClient := middleware.NewStatsdClient(statsdAddr, "subscriber")
 	v1 := e.Group("api/v1",
 		middleware.UseLogger(logger, environment))
 	v1.GET("/ws", handler.NotifyClient,

@@ -32,14 +32,26 @@ func (h *catalogHandlers) AddItems(ctx context.Context, body []byte) ([]byte, er
 		return nil, entitlements.ErrInvalidRequest
 	}
 	entitlement, err := h.catalogManager.CreateEntitlement(
-		ctx, request.Name, request.Description, request.Category, request.Price.Amount,
-		request.Price.Currency, request.Unique, request.Metadata)
+		ctx,
+		request.Item.CatalogItemID,
+		request.Item.ItemType,
+		request.Item.Category,
+		request.Item.Price,
+		request.Item.Unique,
+		request.Item.Metadata,
+		request.Item.GameProperties,
+		request.Item.Tags,
+		request.Item.Behavior,
+		request.Item.GrantResults,
+		request.Item.Requirements,
+	)
 	if err != nil {
 		return nil, entitlements.ErrFailedToCreateEntitlement
 	}
 	bts, err := json.Marshal(entitlements.CreateItemResponse{
-		Version:       entitlement.Version,
-		EntitlementID: entitlement.EntitlementID,
+		Version:  entitlement.Version,
+		CommitID: entitlement.CommitID,
+		Item:     request.Item,
 	})
 	if err != nil {
 		return nil, entitlements.ErrFailedToCreateResponse

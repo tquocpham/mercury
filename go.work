@@ -5,11 +5,16 @@ use (
 	./cmd/entitlements
 	./cmd/gateway
 	./cmd/gatewaypriv
+	./cmd/inventory
 	./cmd/messages
 	./cmd/mmservice
 	./cmd/mmsolver
+	./cmd/msgworker
+	./cmd/portal
 	./cmd/publisher
 	./cmd/subscriber
-	./cmd/worker
+	./cmd/trade
+	./cmd/tradecourier
+	./cmd/wallet
 	./pkg
 )

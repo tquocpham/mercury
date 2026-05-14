@@ -29,7 +29,7 @@ func main() {
 	}
 	logger.SetLevel(level)
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "websocket")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "publisher")
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,

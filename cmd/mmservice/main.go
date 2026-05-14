@@ -29,7 +29,7 @@ func main() {
 	}
 	logger.SetLevel(level)
 
-	statsdClient := middleware.NewStatsdClient(statsdAddr, "query")
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "mmservice")
 
 	publisherClient, err := publisher.NewRMQClient(amqpURL)
 	if err != nil {

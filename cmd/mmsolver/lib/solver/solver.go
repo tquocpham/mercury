@@ -9,48 +9,64 @@ import (
 	"github.com/mercury/cmd/mmsolver/lib/managers"
 	"github.com/mercury/pkg/clients/matchmaking"
 	"github.com/mercury/pkg/clients/publisher"
+	"github.com/mercury/pkg/instrumentation"
 	"github.com/sirupsen/logrus"
 	"github.com/smira/go-statsd"
 )
 
 type MMSolver interface {
-	Solve(logger *logrus.Logger)
+	Solve(ctx context.Context, logger *logrus.Logger)
 }
 
 type mmSolver struct {
-	publisherClient publisher.RMQClient
-	statsdClient    *statsd.Client
-	maxSolveTime    time.Duration
-	mmManager       managers.MatchmakingManager
+	checkInterval      time.Duration
+	solverWorkInterval time.Duration
+	publisherClient    publisher.RMQClient
+	statsdClient       *statsd.Client
+	maxSolveTime       time.Duration
+	mmManager          managers.MatchmakingManager
 }
 
 func NewMMSolver(
+	checkInterval time.Duration,
+	solverWorkInterval time.Duration,
+	maxSolveTime time.Duration,
 	publisherClient publisher.RMQClient,
 	mmManager managers.MatchmakingManager,
 	statsdClient *statsd.Client) MMSolver {
 	return &mmSolver{
-		publisherClient: publisherClient,
-		statsdClient:    statsdClient,
-		maxSolveTime:    10 * time.Minute,
-		mmManager:       mmManager,
+		checkInterval:      checkInterval,
+		publisherClient:    publisherClient,
+		statsdClient:       statsdClient,
+		maxSolveTime:       maxSolveTime,
+		mmManager:          mmManager,
+		solverWorkInterval: solverWorkInterval,
 	}
 }
 
-func (s *mmSolver) Solve(logger *logrus.Logger) {
+func (s *mmSolver) Solve(ctx context.Context, logger *logrus.Logger) {
+	interval := s.checkInterval
 	for {
-		solveID := uuid.New().String()
-		ctx, cancel := context.WithTimeout(context.Background(), s.maxSolveTime)
-		matched, err := s.solve(logger.WithFields(logrus.Fields{
-			"solve_id": solveID,
-		}), ctx)
-		cancel()
-		if err != nil {
-			logger.WithError(err).Error("solve iteration failed")
-		}
-		if matched {
-			time.Sleep(500 * time.Millisecond)
-		} else {
-			time.Sleep(5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+			t := instrumentation.NewMetricsTimer(ctx, "mmsolver.dur", statsd.StringTag("op", "solve"))
+			solveID := uuid.New().String()
+			solveCtx, cancel := context.WithTimeout(ctx, s.maxSolveTime)
+			matched, err := s.solve(logger.WithFields(logrus.Fields{
+				"solve_id": solveID,
+			}), solveCtx)
+			cancel()
+			if err != nil {
+				logger.WithError(err).Error("solve iteration failed")
+			}
+			if matched {
+				interval = s.solverWorkInterval
+			} else {
+				interval = s.checkInterval
+			}
+			t.Done(err)
 		}
 	}
 }

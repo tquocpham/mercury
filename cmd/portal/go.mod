@@ -1,13 +1,12 @@
-module github.com/mercury/cmd/worker
+module github.com/mercury/cmd/portal
 
-go 1.25.5
+go 1.26.1
 
 require (
-	github.com/gocql/gocql v1.7.0
-	github.com/google/uuid v1.6.0
+	github.com/labstack/echo/v4 v4.15.1
 	github.com/mercury/pkg v0.0.0-00010101000000-000000000000
-	github.com/segmentio/kafka-go v0.4.50
 	github.com/sirupsen/logrus v1.9.4
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -22,15 +21,12 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/golang/snappy v0.0.3 // indirect
-	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
-	github.com/klauspost/compress v1.17.6 // indirect
-	github.com/labstack/echo/v4 v4.15.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
 	github.com/redis/go-redis/v9 v9.18.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
@@ -49,7 +45,6 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
-	gopkg.in/inf.v0 v0.9.1 // indirect
 )
 
 replace github.com/mercury/pkg => ../../pkg

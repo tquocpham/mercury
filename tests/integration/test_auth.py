@@ -9,19 +9,21 @@ Usage:
 import uuid
 import pytest
 import httpx
-import pymongo
 
 
 @pytest.fixture(scope="session")
-def test_user(gateway, mongo_url):
+def test_user(gateway, mongo_client):
     """Create and activate a throwaway account for login tests."""
     username = f"test-auth-{uuid.uuid4().hex[:8]}"
     email = f"{username}@mercury.local"
     password = "testpassword"
 
     with httpx.Client(timeout=10.0) as client:
-        resp = client.post(f"{gateway}/api/v1/account",
-                           json={"username": username, "email": email, "password": password})
+        resp = client.post(f"{gateway}/api/v1/account", json={
+            "username": username,
+            "email": email,
+            "password": password,
+        })
         assert resp.status_code == 200, f"account creation failed: {resp.text}"
         account_id = resp.json()["account_id"]
 
@@ -30,9 +32,7 @@ def test_user(gateway, mongo_url):
 
     yield {"username": username, "password": password}
 
-    mdb = pymongo.MongoClient(mongo_url)
-    mdb["auth"]["users"].delete_one({"username": username})
-    mdb.close()
+    mongo_client["auth"]["users"].delete_one({"username": username})
 
 
 # ---------------------------------------------------------------------------

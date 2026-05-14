@@ -1,0 +1,59 @@
+package main
+
+import (
+	"github.com/mercury/cmd/wallet/lib/handlers"
+	"github.com/mercury/cmd/wallet/lib/managers"
+	"github.com/mercury/pkg/config"
+	"github.com/mercury/pkg/middleware"
+	"github.com/mercury/pkg/rmq"
+	"github.com/sirupsen/logrus"
+)
+
+func main() {
+	cfg := config.NewConfig("yaml")
+	err := cfg.LoadPaths(config.DefaultConfigPaths)
+	if err != nil {
+		panic(err.Error())
+	}
+	amqpURL := cfg.SetDefaultString("amqp_url", "amqp://guest:guest@rabbitmq:5672/", false)
+	logLevel := cfg.SetDefaultString("log_level", "info", false)
+	statsdAddr := cfg.SetDefaultString("statsd_addr", "telegraf:8125", false)
+	postgresDSN := cfg.SetDefaultString("postgres_dsn", "postgres://postgres:postgres@localhost:5432/mercury", false)
+
+	logger := logrus.New()
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	level, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	logger.SetLevel(level)
+	for k, v := range cfg.AllSettings() {
+		logger.WithFields(logrus.Fields{
+			"k": k,
+			"v": v,
+		}).Info("config")
+	}
+
+	statsdClient := middleware.NewStatsdClient(statsdAddr, "wallet")
+
+	walletManager, err := managers.NewPostgresWalletManager(postgresDSN, statsdClient)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	rmqHandlers := handlers.NewRMQHandlers(walletManager)
+	consumer, err := rmq.NewConsumer(amqpURL, logger)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer consumer.Close()
+	consumer.Consume("wallet.v1.add_currency", rmqHandlers.AddCurrency,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Consume("wallet.v1.get_wallet", rmqHandlers.GetWallet,
+		rmq.UseLogger(logger),
+		rmq.UseStatsd(statsdClient),
+	)
+	consumer.Wait()
+}

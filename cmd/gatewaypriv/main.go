@@ -6,7 +6,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/mercury/cmd/gatewaypriv/lib/handlers"
+	"github.com/mercury/pkg/clients/inventory"
 	"github.com/mercury/pkg/clients/matchmaking"
+	"github.com/mercury/pkg/clients/trade"
+	"github.com/mercury/pkg/clients/wallet"
 	"github.com/mercury/pkg/config"
 	"github.com/mercury/pkg/middleware"
 	"github.com/mercury/pkg/server"
@@ -62,9 +65,27 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer mmClient.Close()
+	walletClient, err := wallet.NewClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer walletClient.Close()
+	tradeClient, err := trade.NewClient(logger, amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer tradeClient.Close()
+	inventoryClient, err := inventory.NewClient(amqpURL)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	defer inventoryClient.Close()
 
 	statsdClient := middleware.NewStatsdClient(statsdAddr, "gatewaypriv")
 	gsHandlers := handlers.NewGameserverHandlers(mmClient)
+	walletHandlers := handlers.NewWalletHandlers(walletClient)
+	tradeHandlers := handlers.NewTradeHandlers(tradeClient)
+	inventoryHandlers := handlers.NewInventoryHandlers(inventoryClient)
 
 	e := echo.New()
 	v1 := e.Group("api/v1",
@@ -73,6 +94,23 @@ func main() {
 	gsv1 := v1.Group("/gs")
 	gsv1.POST("/register", gsHandlers.Register)
 	gsv1.POST("/unregister", gsHandlers.Unregister)
+
+	walletv1 := v1.Group("/wallet")
+	walletv1.POST("/add_currency", walletHandlers.AddCurrency)
+	walletv1.GET("/wallet/:playerid", walletHandlers.GetWallet)
+
+	tradev1 := v1.Group("/trade")
+	tradev1.POST("/draft", tradeHandlers.DraftTrade)
+	tradev1.POST("/lock", tradeHandlers.LockTrade)
+	tradev1.POST("/unlock", tradeHandlers.UnlockTrade)
+	tradev1.POST("/dispatch", tradeHandlers.DispatchGrants)
+	tradev1.GET("/status/:orderid", tradeHandlers.GetTradeStatus)
+
+	inventoryv1 := v1.Group("/inventory")
+	inventoryv1.POST("/create", inventoryHandlers.CreateInventory)
+	inventoryv1.GET("/:playerid", inventoryHandlers.GetInventory)
+	inventoryv1.POST("/add_item", inventoryHandlers.AddItem)
+	inventoryv1.POST("/add_item_to_slot", inventoryHandlers.AddItemToSlot)
 
 	if err := server.Serve(e, fmt.Sprintf(":%s", port)); err != nil {
 		logger.Fatal(err)

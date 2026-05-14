@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -14,6 +15,9 @@ type Config interface {
 	LoadPaths(configPaths []string) error
 	Load(path string) error
 	SetDefaultString(key string, value string, secure bool) string
+	SetDefaultInt(key string, value int, secure bool) int
+	SetDefaultBool(key string, value bool, secure bool) bool
+	SetDefaultDuration(key string, value time.Duration, secure bool) time.Duration
 }
 
 type viperConfig interface {
@@ -23,6 +27,8 @@ type viperConfig interface {
 	ReadInConfig() error
 	SetConfigType(configType string)
 	MergeConfig(in io.Reader) error
+	GetInt(key string) int
+	GetBool(key string) bool
 }
 
 type config struct {
@@ -94,11 +100,33 @@ func (c *config) Load(path string) error {
 	return c.Viper.MergeConfig(f)
 }
 
-func (c *config) SetDefaultString(key string, value string, secure bool) string {
-	c.SetDefault(key, value)
+func (c *config) register(key string, secure bool) {
 	if secure {
-		c.secureKeys[key] = value
+		c.secureKeys[key] = "secret"
 	}
 	c.specific[key] = struct{}{}
+}
+
+func (c *config) SetDefaultString(key string, value string, secure bool) string {
+	c.SetDefault(key, value)
+	c.register(key, secure)
 	return c.GetString(key)
+}
+
+func (c *config) SetDefaultInt(key string, value int, secure bool) int {
+	c.Viper.SetDefault(key, value)
+	c.register(key, secure)
+	return c.Viper.GetInt(key)
+}
+
+func (c *config) SetDefaultBool(key string, value bool, secure bool) bool {
+	c.Viper.SetDefault(key, value)
+	c.register(key, secure)
+	return c.Viper.GetBool(key)
+}
+
+func (c *config) SetDefaultDuration(key string, value time.Duration, secure bool) time.Duration {
+	c.Viper.SetDefault(key, value)
+	c.register(key, secure)
+	return c.Viper.GetDuration(key)
 }

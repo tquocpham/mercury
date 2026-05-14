@@ -8,13 +8,18 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.68.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/labstack/echo/v4 v4.15.1
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/segmentio/kafka-go v0.4.50
 	github.com/sirupsen/logrus v1.9.4
 	github.com/smira/go-statsd v1.3.4
 	github.com/spf13/viper v1.21.0
+	go.mongodb.org/mongo-driver v1.17.9
+	go.mongodb.org/mongo-driver/v2 v2.6.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -46,4 +51,5 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
