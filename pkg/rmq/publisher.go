@@ -11,8 +11,8 @@ import (
 
 type Publisher struct {
 	amqpURL string
-	conn    *amqp.Connection
-	channel *amqp.Channel
+	conn    amqpConnection
+	channel amqpChannel
 	pending map[string]chan []byte
 	mu      sync.Mutex
 }
@@ -65,7 +65,7 @@ func (p *Publisher) connect() error {
 			}
 		}
 	}()
-	p.conn = conn
+	p.conn = &realConn{conn}
 	p.channel = ch
 	return nil
 }
